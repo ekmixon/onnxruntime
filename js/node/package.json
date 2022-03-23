@@ -41,7 +41,7 @@
     "globby": "^11.0.2",
     "jsonc": "^2.0.0",
     "klaw-sync": "^6.0.0",
-    "minimist": "^1.2.5",
+    "minimist": "^1.2.6",
     "mocha": "^8.2.1",
     "node-addon-api": "^3.1.0",
     "node-pre-gyp-github": "^1.4.3",
