@@ -49,7 +49,7 @@
     "karma-chai": "^0.1.0",
     "karma-chrome-launcher": "^3.1.0",
     "karma-edge-launcher": "^0.4.2",
-    "karma-electron": "^7.0.0",
+    "karma-electron": "^7.2.0",
     "karma-firefox-launcher": "^2.1.0",
     "karma-mocha": "^2.0.1",
     "karma-mocha-reporter": "^2.2.5",
