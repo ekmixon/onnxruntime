@@ -78,26 +78,28 @@ class LSTMQuant(QuantOperatorBase):
             W_quant_scale.dims[:] = [W_num_dir, W_4_hidden_size]
             R_quant_scale.dims[:] = [R_num_dir, R_4_hidden_size]
 
-        inputs = []
         input_len = len(node.input)
-        inputs.extend([node.input[0]])
-        inputs.extend([quant_input_weight_tuple[0], quant_recurrent_weight_tuple[0]])
-        inputs.extend([node.input[3] if input_len > 3 else ""])
-        inputs.extend([node.input[4] if input_len > 4 else ""])
-        inputs.extend([node.input[5] if input_len > 5 else ""])
-        inputs.extend([node.input[6] if input_len > 6 else ""])
-        inputs.extend([node.input[7] if input_len > 7 else ""])
-        inputs.extend([
-            quant_input_weight_tuple[2], quant_input_weight_tuple[1], quant_recurrent_weight_tuple[2],
-            quant_recurrent_weight_tuple[1]
-        ])
+        inputs = [
+            node.input[0],
+            quant_input_weight_tuple[0],
+            quant_recurrent_weight_tuple[0],
+            node.input[3] if input_len > 3 else "",
+            node.input[4] if input_len > 4 else "",
+            node.input[5] if input_len > 5 else "",
+            node.input[6] if input_len > 6 else "",
+            node.input[7] if input_len > 7 else "",
+            quant_input_weight_tuple[2],
+            quant_input_weight_tuple[1],
+            quant_recurrent_weight_tuple[2],
+            quant_recurrent_weight_tuple[1],
+        ]
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(attribute_to_kwarg(attribute))
+            kwargs |= attribute_to_kwarg(attribute)
         kwargs["domain"] = ms_domain
 
-        quant_lstm_name = "" if node.name == "" else node.name + "_quant"
+        quant_lstm_name = "" if node.name == "" else f"{node.name}_quant"
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
         self.quantizer.new_nodes.append(quant_lstm_node)
 

@@ -22,7 +22,7 @@ class OnnxRuntimeBackendRep(BackendRep):
         """
         self._session = session
 
-    def run(self, inputs, **kwargs):  # type: (Any, **Any) -> Tuple[Any, ...]
+    def run(self, inputs, **kwargs):    # type: (Any, **Any) -> Tuple[Any, ...]
         """
         Computes the prediction.
         See :meth:`onnxruntime.InferenceSession.run`.
@@ -34,15 +34,16 @@ class OnnxRuntimeBackendRep(BackendRep):
                 setattr(options, k, v)
 
         if isinstance(inputs, list):
-            inps = {}
-            for i, inp in enumerate(self._session.get_inputs()):
-                inps[inp.name] = inputs[i]
+            inps = {
+                inp.name: inputs[i]
+                for i, inp in enumerate(self._session.get_inputs())
+            }
+
             outs = self._session.run(None, inps, options)
             if isinstance(outs, list):
                 return outs
-            else:
-                output_names = [o.name for o in self._session.get_outputs()]
-                return [outs[name] for name in output_names]
+            output_names = [o.name for o in self._session.get_outputs()]
+            return [outs[name] for name in output_names]
         else:
             inp = self._session.get_inputs()
             if len(inp) != 1:

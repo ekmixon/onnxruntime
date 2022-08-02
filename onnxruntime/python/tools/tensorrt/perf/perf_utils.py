@@ -11,8 +11,7 @@ debug_verbose = False
 
 def get_output(command):
     p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
-    output = p.stdout.decode("ascii").strip()
-    return output
+    return p.stdout.decode("ascii").strip()
 
 def find(regex_string): 
     import glob
@@ -25,8 +24,7 @@ def pretty_print(pp, json_object):
     sys.stdout.flush()
 
 def get_latest_commit_hash():
-    commit = get_output(["git", "rev-parse", "--short", "HEAD"])
-    return commit
+    return get_output(["git", "rev-parse", "--short", "HEAD"])
 
 def parse_single_file(f):
 
@@ -41,7 +39,7 @@ def parse_single_file(f):
     provider_op_map_first_run = {} # ep -> map of operator to duration
 
     for row in data:
-        if not "cat" in row:
+        if "cat" not in row:
             continue
 
         if row["cat"] == "Session":
@@ -56,7 +54,7 @@ def parse_single_file(f):
             if "name" in row and "args" in row and re.search(".*kernel_time", row["name"]):
                 args = row["args"]
 
-                if not "op_name" in args or not "provider" in args:
+                if "op_name" not in args or "provider" not in args:
                     continue
 
                 provider = args["provider"]
@@ -82,7 +80,7 @@ def parse_single_file(f):
                     op_map = provider_op_map[provider]
 
                     # avoid duplicated metrics
-                    if not row["name"] in op_map:
+                    if row["name"] not in op_map:
                         op_map[row["name"]] = row["dur"]
                         provider_op_map[provider] = op_map
 
@@ -93,20 +91,17 @@ def parse_single_file(f):
         pp = pprint.PrettyPrinter(indent=4)
         print("------First run ops map (START)------")
         for key, map in provider_op_map_first_run.items():
-            print(key) 
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            print(key)
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
 
         print("------First run ops map (END) ------")
         print("------Second run ops map (START)------")
         for key, map in provider_op_map.items():
-            print(key) 
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            print(key)
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
         print("------Second run ops map (END) ------")
 
-    if model_run_flag:
-        return provider_op_map
-
-    return None
+    return provider_op_map if model_run_flag else None
 
 def calculate_cuda_op_percentage(cuda_op_map):
     if not cuda_op_map or len(cuda_op_map) == 0:
@@ -115,11 +110,11 @@ def calculate_cuda_op_percentage(cuda_op_map):
     cuda_ops = 0
     cpu_ops = 0
     for key, value in cuda_op_map.items():
-        if key == 'CUDAExecutionProvider':
-            cuda_ops += len(value)
-
         if key == 'CPUExecutionProvider':
             cpu_ops += len(value)
+
+        elif key == 'CUDAExecutionProvider':
+            cuda_ops += len(value)
 
     return cuda_ops / (cuda_ops + cpu_ops)
 
@@ -154,20 +149,18 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
     #
     ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
     if debug:
-        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
-        print("total_ops: {}".format(total_ops))
-        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
+        print(f"total_cuda_and_cpu_ops: {total_cuda_and_cpu_ops}")
+        print(f"total_ops: {total_ops}")
+        print(f"ratio_of_ops_in_trt: {ratio_of_ops_in_trt}")
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
 def get_total_ops(op_map):
-    total_ops = 0
-
-    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
-        if ep in op_map:
-            total_ops += len(op_map[ep])
-
-    return total_ops
+    return sum(
+        len(op_map[ep])
+        for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if ep in op_map
+    )
 
 
 ##########################################
@@ -183,10 +176,7 @@ def calculate_trt_latency_percentage(trt_op_map):
         if ep in trt_op_map:
             op_map = trt_op_map[ep]
 
-            total_time = 0
-            for key, value in op_map.items():
-                total_time += int(value)
-
+            total_time = sum(int(value) for key, value in op_map.items())
             if ep == "TensorrtExecutionProvider":
                 total_trt_execution_time = total_time
 
@@ -200,16 +190,16 @@ def calculate_trt_latency_percentage(trt_op_map):
         ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
 
     if debug:
-        print("total_trt_execution_time: {}".format(total_trt_execution_time))
-        print("total_execution_time: {}".format(total_execution_time))
-        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
+        print(f"total_trt_execution_time: {total_trt_execution_time}")
+        print(f"total_execution_time: {total_execution_time}")
+        print(f"ratio_of_trt_execution_time: {ratio_of_trt_execution_time}")
 
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
 
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):
-    logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
+    logger.info(f"Parsing/Analyzing profiling files in {path} ...")
     p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
@@ -224,13 +214,12 @@ def get_profile_metrics(path, profile_already_parsed, logger=None):
             continue
         profile_already_parsed.add(profile)
 
-        logger.info("start to parse {} ...".format(profile))
+        logger.info(f"start to parse {profile} ...")
         with open(profile) as f:
-            op_map = parse_single_file(f)
-            if op_map:
+            if op_map := parse_single_file(f):
                 data.append(op_map)
 
-    if len(data) == 0:
+    if not data:
         logger.info("No profile metrics got.")
         return None
 

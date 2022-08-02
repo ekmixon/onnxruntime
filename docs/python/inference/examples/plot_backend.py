@@ -14,6 +14,7 @@ to run predictions using this runtime.
 Let's use the API to compute the prediction
 of a simple logistic regression model.
 """
+
 import numpy as np
 from onnxruntime import datasets
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
@@ -33,8 +34,8 @@ rep = backend.prepare(model, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
-    print("label={}".format(label))
-    print("probabilities={}".format(proba))
+    print(f"label={label}")
+    print(f"probabilities={proba}")
 except (RuntimeError, InvalidArgument) as e:
     print(e)
 
@@ -46,8 +47,8 @@ rep = backend.prepare(name, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
-    print("label={}".format(label))
-    print("probabilities={}".format(proba))
+    print(f"label={label}")
+    print(f"probabilities={proba}")
 except (RuntimeError, InvalidArgument) as e:
     print(e)
 

@@ -38,8 +38,7 @@ def optimize_model(model_path: Path):
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
-    optimized_model = onnx.load(opt_model_path.as_posix())
-    return optimized_model
+    return onnx.load(opt_model_path.as_posix())
 
 
 def load_model(model_path: Path, optimize=True):
@@ -115,7 +114,7 @@ def quantize(model,
     '''
     logging.warning("onnxruntime.quantization.quantize is deprecated.\n\
          Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
-    if nbits == 8 or nbits == 7:
+    if nbits in [8, 7]:
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)

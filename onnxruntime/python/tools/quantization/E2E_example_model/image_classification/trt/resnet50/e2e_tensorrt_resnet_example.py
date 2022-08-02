@@ -33,7 +33,7 @@ class ImageNetDataReader(CalibrationDataReader):
         :param input_name: model input name
         '''
 
-        self.image_folder = image_folder + "/val"
+        self.image_folder = f"{image_folder}/val"
         self.model_path = model_path
         self.preprocess_flag = True
         self.enum_data_dicts = iter([])
@@ -42,7 +42,7 @@ class ImageNetDataReader(CalibrationDataReader):
         self.height = height
         self.start_index = start_index
         self.end_index = len(os.listdir(self.image_folder)) if end_index == 0 else end_index
-        self.stride = stride if stride >= 1 else 1
+        self.stride = max(stride, 1)
         self.batch_size = batch_size
         self.input_name = input_name
 
@@ -56,23 +56,17 @@ class ImageNetDataReader(CalibrationDataReader):
         self.input_name = session.get_inputs()[0].name
 
     def get_next(self):
-        iter_data = next(self.enum_data_dicts, None)
-        if iter_data:
+        if iter_data := next(self.enum_data_dicts, None):
             return iter_data
 
         self.enum_data_dicts = None
-        if self.start_index < self.end_index:
-            if self.batch_size == 1:
-                data = self.load_serial()
-            else:
-                data = self.load_batches()
-
-            self.start_index += self.stride
-            self.enum_data_dicts = iter(data)
-
-            return next(self.enum_data_dicts, None)
-        else:
+        if self.start_index >= self.end_index:
             return None
+        data = self.load_serial() if self.batch_size == 1 else self.load_batches()
+        self.start_index += self.stride
+        self.enum_data_dicts = iter(data)
+
+        return next(self.enum_data_dicts, None)
 
     def load_serial(self):
         width = self.width
@@ -142,8 +136,7 @@ class ImageNetDataReader(CalibrationDataReader):
         image_names.sort()
         if size_limit > 0 and len(image_names) >= size_limit:
             end_index = start_index + size_limit
-            if end_index > len(image_names):
-                end_index = len(image_names)
+            end_index = min(end_index, len(image_names))
             batch_filenames = [image_names[i] for i in range(start_index, end_index)]
         else:
             batch_filenames = image_names
@@ -152,7 +145,7 @@ class ImageNetDataReader(CalibrationDataReader):
         image_size_list = []
 
         for image_name in batch_filenames:
-            image_filepath = images_folder + '/' + image_name
+            image_filepath = f'{images_folder}/{image_name}'
             img = Image.open(image_filepath)
             image_data = preprocess_images(img)
             image_data = np.expand_dims(image_data, 0)
@@ -163,32 +156,26 @@ class ImageNetDataReader(CalibrationDataReader):
         return batch_data, batch_filenames, image_size_list
 
     def get_synset_id(self, image_folder, offset, dataset_size):
-        ilsvrc2012_meta = scipy.io.loadmat(image_folder + "/devkit/data/meta.mat")
+        ilsvrc2012_meta = scipy.io.loadmat(f"{image_folder}/devkit/data/meta.mat")
         id_to_synset = {}
         for i in range(1000):
             id = int(ilsvrc2012_meta["synsets"][i, 0][0][0][0])
             id_to_synset[id] = ilsvrc2012_meta["synsets"][i, 0][1][0]
 
         synset_to_id = {}
-        file = open(image_folder + "/synset_words.txt", "r")
-        index = 0
-        for line in file:
-            parts = line.split(" ")
-            synset_to_id[parts[0]] = index
-            index = index + 1
-        file.close()
-
-        file = open(image_folder + "/devkit/data/ILSVRC2012_validation_ground_truth.txt", "r")
-        id = file.read().strip().split("\n")
-        id = list(map(int, id))
-        file.close()
-
-        image_names = os.listdir(image_folder + "/val")
+        with open(f"{image_folder}/synset_words.txt", "r") as file:
+            index = 0
+            for line in file:
+                parts = line.split(" ")
+                synset_to_id[parts[0]] = index
+                index = index + 1
+        with open(f"{image_folder}/devkit/data/ILSVRC2012_validation_ground_truth.txt", "r") as file:
+            id = file.read().strip().split("\n")
+            id = list(map(int, id))
+        image_names = os.listdir(f"{image_folder}/val")
         image_names.sort()
         image_names = image_names[offset:offset + dataset_size]
-        seq_num = []
-        for file in image_names:
-            seq_num.append(int(file.split("_")[-1].split(".")[0]))
+        seq_num = [int(file.split("_")[-1].split(".")[0]) for file in image_names]
         id = np.array([id[index - 1] for index in seq_num])
         synset_id = np.array([synset_to_id[id_to_synset[index]] for index in id])
 
@@ -259,10 +246,7 @@ class ImageClassificationEvaluator:
 def convert_model_batch_to_dynamic(model_path):
     model = onnx.load(model_path)
     initializers =  [node.name for node in model.graph.initializer]
-    inputs = []
-    for node in model.graph.input:
-        if node.name not in initializers:
-            inputs.append(node)
+    inputs = [node for node in model.graph.input if node.name not in initializers]
     input_name = inputs[0].name
     shape = inputs[0].type.tensor_type.shape
     dim = shape.dim
@@ -270,13 +254,13 @@ def convert_model_batch_to_dynamic(model_path):
         dim[0].dim_param = 'N'
         model = onnx.shape_inference.infer_shapes(model)
         model_name = model_path.split(".")
-        model_path = model_name[0] + "_dynamic.onnx"
+        model_path = f"{model_name[0]}_dynamic.onnx"
         onnx.save(model, model_path)
     return [model_path, input_name]
 
 
 def get_dataset_size(dataset_path, calibration_dataset_size):
-    total_dataset_size = len(os.listdir(dataset_path + "/val"))
+    total_dataset_size = len(os.listdir(f"{dataset_path}/val"))
     if calibration_dataset_size > total_dataset_size:
         logging.warning(
             "calibration data size is bigger than available dataset. Will assign half of the dataset for calibration")

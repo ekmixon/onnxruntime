@@ -144,8 +144,10 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
-                                                                                   [batch_size, sequence_length]))
+                    logger.info(
+                        f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}"
+                    )
+
 
                     if disable_ort_io_binding:
                         result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
@@ -207,7 +209,10 @@ def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info(
+                    f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}"
+                )
+
                 input_ids = torch.randint(low=0,
                                           high=config.vocab_size - 1,
                                           size=(batch_size, sequence_length),
@@ -233,7 +238,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
                     }
-                    result.update(get_latency_result(runtimes, batch_size))
+                    result |= get_latency_result(runtimes, batch_size)
                     logger.info(result)
                     results.append(result)
                 except RuntimeError as e:
@@ -257,10 +262,11 @@ def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
         def run_in_graph_mode(*args, **kwargs):
             return func(*args, **kwargs)
 
-        if do_eager_mode is True:
+        if do_eager_mode:
             assert (
-                use_xla is False
+                not use_xla
             ), "Cannot run model in XLA, if `args.eager_mode` is set to `True`. Please set `args.eager_mode=False`."
+
             return run_in_eager_mode
         else:
             return run_in_graph_mode
@@ -291,7 +297,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
         except RuntimeError as e:
             logger.exception(e)
 
-    if precision == Precision.FLOAT16 or precision == Precision.INT8:
+    if precision in [Precision.FLOAT16, Precision.INT8]:
         raise NotImplementedError("Mixed precision is currently not supported.")
 
     for model_name in model_names:
@@ -333,7 +339,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
                         return model(input_ids, decoder_input_ids=input_ids, training=False)
-                    
+
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def lxmert_forward():
                         feats = tf.random.normal([1, 1, config.visual_feat_dim])
@@ -485,8 +491,7 @@ def parse_arguments():
 
     parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main():
@@ -502,7 +507,10 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
-    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+    args.num_threads = sorted(
+        {cpu_count if x <= 0 else x for x in args.num_threads}
+    )
+
 
     logger.info(f"Arguments: {args}")
 
@@ -510,7 +518,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)
+            logger.error(f"Creation of the directory {args.cache_dir} failed")
 
     enable_torch = "torch" in args.engines
     enable_torchscript = "torchscript" in args.engines
@@ -522,19 +530,18 @@ def main():
     for num_threads in args.num_threads:
         torch.set_num_threads(num_threads)
         logger.debug(torch.__config__.parallel_info())
-        if enable_torch or enable_torchscript:
-            if args.input_counts != [1]:
-                logger.warning("--input_counts is not implemented for torch or torchscript engine.")
+        if (enable_torch or enable_torchscript) and args.input_counts != [1]:
+            logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
-            if enable_torchscript:
-                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
-                                       args.batch_sizes, args.sequence_lengths, args.test_times, True, args.cache_dir,
-                                       args.verbose)
+        if enable_torchscript:
+            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                   args.batch_sizes, args.sequence_lengths, args.test_times, True, args.cache_dir,
+                                   args.verbose)
 
-            if enable_torch:
-                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
-                                       args.batch_sizes, args.sequence_lengths, args.test_times, False, args.cache_dir,
-                                       args.verbose)
+        if enable_torch:
+            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                   args.batch_sizes, args.sequence_lengths, args.test_times, False, args.cache_dir,
+                                   args.verbose)
 
         if enable_tensorflow:
             results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
@@ -551,7 +558,7 @@ def main():
                                            args.verbose, args.overwrite, args.disable_ort_io_binding,
                                            use_raw_attention_mask, model_fusion_statistics, args.model_source)
             except:
-                logger.error(f"Exception", exc_info=True)
+                logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

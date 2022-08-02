@@ -11,17 +11,15 @@ class QSplit(QuantOperatorBase):
     def quantize(self):
         node = self.node
         quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
-        quantized_node_name = ""
-        if node.name != "":
-            quantized_node_name = node.name + "_quant"
+        quantized_node_name = f"{node.name}_quant" if node.name != "" else ""
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(attribute_to_kwarg(attribute))
+            kwargs |= attribute_to_kwarg(attribute)
 
         # Output just derive the scale/zero from input
         quantized_output_names = []
         for output_name in node.output:
-            quantized_output_name = output_name + "quantized"
+            quantized_output_name = f"{output_name}quantized"
             quantized_output_names.append(quantized_output_name)
             q_output = QuantizedValue(output_name, quantized_output_name, scale_names[0], zero_point_names[0],
                                       QuantizedValueType.Input)

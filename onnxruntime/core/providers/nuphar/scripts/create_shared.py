@@ -28,7 +28,7 @@ def gen_checksum(file_checksum, input_dir):
         return
 
     name = 'ORTInternal_checksum'
-    with open(os.path.join(input_dir, name + '.cc'), 'w') as checksum_cc:
+    with open(os.path.join(input_dir, f'{name}.cc'), 'w') as checksum_cc:
         print('#include <stdlib.h>', file=checksum_cc)
         print('static const char model_checksum[] = "' + file_checksum + '";', file=checksum_cc)
         print('extern "C"', file=checksum_cc)
@@ -40,9 +40,9 @@ def gen_checksum(file_checksum, input_dir):
 
 def gen_cache_version(input_dir):
     name = 'ORTInternal_cache_version'
-    with open(os.path.join(input_dir, name + '.cc'), 'w') as cache_version_cc:
+    with open(os.path.join(input_dir, f'{name}.cc'), 'w') as cache_version_cc:
         header_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'NUPHAR_CACHE_VERSION')
-        print('#include "{}"'.format(header_file), file=cache_version_cc)
+        print(f'#include "{header_file}"', file=cache_version_cc)
         print('extern "C"', file=cache_version_cc)
         if is_windows():
             print('__declspec(dllexport)', file=cache_version_cc)
@@ -56,9 +56,14 @@ def compile_all_cc(path):
         if ext != '.cc':
             continue
         if is_windows():
-            subprocess.run(['cl', '/Fo' + name + '.o', '/c', f], cwd=path, check=True)
+            subprocess.run(['cl', f'/Fo{name}.o', '/c', f], cwd=path, check=True)
         else:
-            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', name + '.o', '-c', f], cwd=path, check=True)
+            subprocess.run(
+                ['g++', '-std=c++14', '-fPIC', '-o', f'{name}.o', '-c', f],
+                cwd=path,
+                check=True,
+            )
+
         os.remove(os.path.join(path, f))
 
 def parse_arguments():
@@ -82,7 +87,7 @@ if __name__ == '__main__':
     if is_windows():
         # create dllmain
         name = 'ORTInternal_dllmain'
-        with open(os.path.join(args.input_dir, name + '.cc'), 'w') as dllmain_cc:
+        with open(os.path.join(args.input_dir, f'{name}.cc'), 'w') as dllmain_cc:
             print("#include <windows.h>", file=dllmain_cc)
             print("BOOL APIENTRY DllMain(HMODULE hModule,", file=dllmain_cc)
             print("                      DWORD   ul_reason_for_call,", file=dllmain_cc)
@@ -90,10 +95,28 @@ if __name__ == '__main__':
             print(" {return TRUE;}", file=dllmain_cc)
 
     compile_all_cc(args.input_dir)
-    objs = [f for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
+    objs = [
+        f
+        for f in os.listdir(args.input_dir)
+        if os.path.isfile(os.path.join(args.input_dir, f))
+        and os.path.splitext(f)[1] == '.o'
+    ]
+
 
     if is_windows():
-        subprocess.run(['link', '-dll', '-FORCE:MULTIPLE', '-EXPORT:__tvm_main__', '-out:' + args.output_name, '*.o'], cwd=args.input_dir, check=True)
+        subprocess.run(
+            [
+                'link',
+                '-dll',
+                '-FORCE:MULTIPLE',
+                '-EXPORT:__tvm_main__',
+                f'-out:{args.output_name}',
+                '*.o',
+            ],
+            cwd=args.input_dir,
+            check=True,
+        )
+
     else:
         subprocess.run(['g++', '-shared', '-fPIC', '-o', args.output_name] + objs, cwd=args.input_dir, check=True)
 

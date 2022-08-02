@@ -68,7 +68,7 @@ def validate_with_ort(input_filename, output_filename, symbolic_dims={}):
     _, scan_output = run_with_ort(output_filename, symbolic_dims=symbolic_dims, feeds=feeds)
 
     assert(len(loop_output) == len(scan_output))
-    for index in range(0, len(loop_output)):
+    for index in range(len(loop_output)):
         assert_array_equal(loop_output[index], scan_output[index])
 
 def convert_loop_to_scan_and_validate(input_filename, output_filename, symbolic_dims={}):

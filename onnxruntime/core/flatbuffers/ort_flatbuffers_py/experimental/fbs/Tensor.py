@@ -27,16 +27,12 @@ class Tensor(object):
     # Tensor
     def Name(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Tensor
     def DocString(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Tensor
     def Dims(self, j):
@@ -56,9 +52,7 @@ class Tensor(object):
     # Tensor
     def DimsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Tensor
     def DimsIsNone(self):
@@ -90,9 +84,7 @@ class Tensor(object):
     # Tensor
     def RawDataLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Tensor
     def RawDataIsNone(self):
@@ -110,9 +102,7 @@ class Tensor(object):
     # Tensor
     def StringDataLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Tensor
     def StringDataIsNone(self):

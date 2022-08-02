@@ -18,9 +18,14 @@ class Direct8BitOp(QuantOperatorBase):
 
         # Create an entry for output quantized value
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
-        quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized",
-                                                quantized_input_value.scale_name, quantized_input_value.zp_name,
-                                                quantized_input_value.value_type)
+        quantized_output_value = QuantizedValue(
+            node.output[0],
+            f"{node.output[0]}_quantized",
+            quantized_input_value.scale_name,
+            quantized_input_value.zp_name,
+            quantized_input_value.value_type,
+        )
+
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
         node.input[0] = quantized_input_value.q_name

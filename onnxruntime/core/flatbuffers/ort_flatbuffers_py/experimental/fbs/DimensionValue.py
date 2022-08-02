@@ -41,9 +41,7 @@ class DimensionValue(object):
     # DimensionValue
     def DimParam(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
 def DimensionValueStart(builder): builder.StartObject(3)
 def DimensionValueAddDimType(builder, dimType): builder.PrependInt8Slot(0, dimType, 0)

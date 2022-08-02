@@ -43,10 +43,14 @@ class ONNXModel:
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
-        for tensor in self.model.graph.initializer:
-            if tensor.name == name:
-                return tensor
-        return None
+        return next(
+            (
+                tensor
+                for tensor in self.model.graph.initializer
+                if tensor.name == name
+            ),
+            None,
+        )
 
     def remove_initializer(self, tensor):
         if tensor in self.model.graph.initializer:
@@ -92,11 +96,11 @@ class ONNXModel:
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        parents = []
-        for input in node.input:
-            if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
-        return parents
+        return [
+            output_name_to_node[input]
+            for input in node.input
+            if input in output_name_to_node
+        ]
 
     def get_parent(self, node, idx, output_name_to_node=None):
         if output_name_to_node is None:
@@ -106,10 +110,7 @@ class ONNXModel:
             return None
 
         input = node.input[idx]
-        if input not in output_name_to_node:
-            return None
-
-        return output_name_to_node[input]
+        return None if input not in output_name_to_node else output_name_to_node[input]
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
         '''
@@ -127,9 +128,10 @@ class ONNXModel:
         '''
         nodes = []
         for node in graph.node:
-            for node_input in node.input:
-                if node_input == initializer.name:
-                    nodes.append(node)
+            nodes.extend(
+                node for node_input in node.input if node_input == initializer.name
+            )
+
         return nodes
 
     def replace_gemm_with_matmul(self):
@@ -153,8 +155,7 @@ class ONNXModel:
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
                     inputB = node.input[1]
                     if transB == 1:
-                        B = self.get_initializer(node.input[1])
-                        if B:
+                        if B := self.get_initializer(node.input[1]):
                             # assume B is not used by any other node
                             B_array = onnx.numpy_helper.to_array(B)
                             B_trans = onnx.numpy_helper.from_array(B_array.T)
@@ -163,31 +164,40 @@ class ONNXModel:
                             self.add_initializer(B_trans)
                         else:
                             inputB += '_Transposed'
-                            transpose_node = onnx.helper.make_node('Transpose',
-                                                                   inputs=[node.input[1]],
-                                                                   outputs=[inputB],
-                                                                   name=node.name + '_Transpose')
+                            transpose_node = onnx.helper.make_node(
+                                'Transpose',
+                                inputs=[node.input[1]],
+                                outputs=[inputB],
+                                name=f'{node.name}_Transpose',
+                            )
+
                             new_nodes.append(transpose_node)
 
                     matmul_node = onnx.helper.make_node(
                         'MatMul',
                         inputs=[node.input[0], inputB],
-                        outputs=[node.output[0] + ('_MatMul' if len(node.input) > 2 else '')],
-                        name=node.name + '_MatMul' if node.name else "")
+                        outputs=[
+                            node.output[0]
+                            + ('_MatMul' if len(node.input) > 2 else '')
+                        ],
+                        name=f'{node.name}_MatMul' if node.name else "",
+                    )
+
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
-                        add_node = onnx.helper.make_node('Add',
-                                                         inputs=[node.output[0] + '_MatMul', node.input[2]],
-                                                         outputs=node.output,
-                                                         name=node.name + '_Add' if node.name else "")
+                        add_node = onnx.helper.make_node(
+                            'Add',
+                            inputs=[f'{node.output[0]}_MatMul', node.input[2]],
+                            outputs=node.output,
+                            name=f'{node.name}_Add' if node.name else "",
+                        )
+
                         new_nodes.append(add_node)
 
-                # unsupported
                 else:
                     new_nodes.append(node)
 
-            # not GEMM
             else:
                 new_nodes.append(node)
 
@@ -200,9 +210,12 @@ class ONNXModel:
         '''
         self.topological_sort()
         if use_external_data_format:
-            onnx.external_data_helper.convert_model_to_external_data(self.model,
-                                                                     all_tensors_to_one_file=True,
-                                                                     location=Path(output_path).name + ".data")
+            onnx.external_data_helper.convert_model_to_external_data(
+                self.model,
+                all_tensors_to_one_file=True,
+                location=f"{Path(output_path).name}.data",
+            )
+
         onnx.save_model(self.model, output_path)
 
     @staticmethod
@@ -230,13 +243,14 @@ class ONNXModel:
     def remove_unused_constant(self):
         input_name_to_nodes = self.input_name_to_nodes()
 
-        #remove unused constant
-        unused_nodes = []
         nodes = self.nodes()
-        for node in nodes:
-            if node.op_type == "Constant" and not self.is_graph_output(
-                    node.output[0]) and node.output[0] not in input_name_to_nodes:
-                unused_nodes.append(node)
+        unused_nodes = [
+            node
+            for node in nodes
+            if node.op_type == "Constant"
+            and not self.is_graph_output(node.output[0])
+            and node.output[0] not in input_name_to_nodes
+        ]
 
         self.remove_nodes(unused_nodes)
 
@@ -252,10 +266,7 @@ class ONNXModel:
         self.remove_initializers(ununsed_weights)
 
     def is_graph_output(self, output_name):
-        for output in self.model.graph.output:
-            if output.name == output_name:
-                return True
-        return False
+        return any(output.name == output_name for output in self.model.graph.output)
 
     def topological_sort(self):
         deps_count = [0]*len(self.nodes()) # dependency count of each node
@@ -289,7 +300,7 @@ class ONNXModel:
                         if deps_count[node_idx] == 0:
                             sorted_nodes.append(self.nodes()[node_idx])
                             e = e + 1
-            s = s + 1
+            s += 1
 
         assert(e == len(self.graph().node)), "Graph is not a DAG"
         self.graph().ClearField('node')

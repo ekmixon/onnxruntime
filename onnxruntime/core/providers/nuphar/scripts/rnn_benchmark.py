@@ -20,7 +20,7 @@ from timeit import default_timer as timer
 def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one=True, has_seq_len=False):
     model = onnx.ModelProto()
     model.ir_version = IR_VERSION
-    
+
     opset = model.opset_import.add()
     opset.domain == 'onnx'
     opset.version = 7
@@ -37,17 +37,58 @@ def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model
     gates = {'lstm':4, 'gru':3, 'rnn':1}[rnn_type]
     for i in range(layers):
         layer_input_dim = (input_dim if i == 0 else hidden_dim * num_directions)
-        model.graph.initializer.add().CopyFrom(numpy_helper.from_array(np.random.rand(num_directions, gates*hidden_dim, layer_input_dim).astype(np.float32), 'W'+str(i)))
-        model.graph.initializer.add().CopyFrom(numpy_helper.from_array(np.random.rand(num_directions, gates*hidden_dim, hidden_dim).astype(np.float32), 'R'+str(i)))
-        model.graph.initializer.add().CopyFrom(numpy_helper.from_array(np.random.rand(num_directions, 2*gates*hidden_dim).astype(np.float32), 'B'+str(i)))
-        layer_inputs = [X, 'W'+str(i), 'R'+str(i), 'B'+str(i)]
+        model.graph.initializer.add().CopyFrom(
+            numpy_helper.from_array(
+                np.random.rand(
+                    num_directions, gates * hidden_dim, layer_input_dim
+                ).astype(np.float32),
+                f'W{str(i)}',
+            )
+        )
+
+        model.graph.initializer.add().CopyFrom(
+            numpy_helper.from_array(
+                np.random.rand(
+                    num_directions, gates * hidden_dim, hidden_dim
+                ).astype(np.float32),
+                f'R{str(i)}',
+            )
+        )
+
+        model.graph.initializer.add().CopyFrom(
+            numpy_helper.from_array(
+                np.random.rand(num_directions, 2 * gates * hidden_dim).astype(
+                    np.float32
+                ),
+                f'B{str(i)}',
+            )
+        )
+
+        layer_inputs = [X, f'W{str(i)}', f'R{str(i)}', f'B{str(i)}']
         if has_seq_len:
             layer_inputs += [seq_len]
-        layer_outputs = ['layer_output_'+str(i)]
+        layer_outputs = [f'layer_output_{str(i)}']
         model.graph.node.add().CopyFrom(helper.make_node(rnn_type.upper(), layer_inputs, layer_outputs, rnn_type+str(i), hidden_size=hidden_dim, direction='bidirectional' if bidirectional else 'forward'))
-        model.graph.node.add().CopyFrom(helper.make_node('Transpose', layer_outputs, ['transposed_output_'+str(i)], 'transpose'+str(i), perm=[0,2,1,3]))
-        model.graph.node.add().CopyFrom(helper.make_node('Reshape', ['transposed_output_'+str(i), 'shape'], ['reshaped_output_'+str(i)], 'reshape'+str(i)))
-        X = 'reshaped_output_'+str(i)
+        model.graph.node.add().CopyFrom(
+            helper.make_node(
+                'Transpose',
+                layer_outputs,
+                [f'transposed_output_{str(i)}'],
+                f'transpose{str(i)}',
+                perm=[0, 2, 1, 3],
+            )
+        )
+
+        model.graph.node.add().CopyFrom(
+            helper.make_node(
+                'Reshape',
+                [f'transposed_output_{str(i)}', 'shape'],
+                [f'reshaped_output_{str(i)}'],
+                f'reshape{str(i)}',
+            )
+        )
+
+        X = f'reshaped_output_{str(i)}'
     model.graph.output.add().CopyFrom(helper.make_tensor_value_info(X, onnx.TensorProto.FLOAT, ['s', 'b', hidden_dim * num_directions]))
     model = shape_inference.infer_shapes(model)
     onnx.save(model, model_name)
@@ -96,10 +137,8 @@ class ScopedSetNumThreads:
         set_num_threads(self.saved_num_threads_)
 
 def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layers, seq_len, batch_size, top_n=5, min_duration_seconds=10):
-    model_name = '{}_i{}_h{}_{}_l{}_{}.onnx'.format(rnn_type, input_dim, hidden_dim,
-                                                    'bi' if bidirectional else '',
-                                                    layers,
-                                                    'batched' if batch_size > 1 else 'no_batch')
+    model_name = f"{rnn_type}_i{input_dim}_h{hidden_dim}_{'bi' if bidirectional else ''}_l{layers}_{'batched' if batch_size > 1 else 'no_batch'}.onnx"
+
 
     generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_size == 1)
     feeds = {'input':np.random.rand(seq_len, batch_size, input_dim).astype(np.float32)}
@@ -117,7 +156,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
         # run Scan model converted from original in Nuphar
         from .model_editor import convert_to_scan_model
         from ..tools.symbolic_shape_infer import SymbolicShapeInference
-        scan_model_name = os.path.splitext(model_name)[0] + '_scan.onnx'
+        scan_model_name = f'{os.path.splitext(model_name)[0]}_scan.onnx'
         convert_to_scan_model(model_name, scan_model_name)
         # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape
         onnx.save(SymbolicShapeInference.infer_shapes(onnx.load(scan_model_name)), scan_model_name)
@@ -128,7 +167,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
 
         # quantize Scan model to int8 and run in Nuphar
         from .model_quantizer import convert_matmul_model
-        int8_model_name = os.path.splitext(model_name)[0] + '_int8.onnx'
+        int8_model_name = f'{os.path.splitext(model_name)[0]}_int8.onnx'
         convert_matmul_model(scan_model_name, int8_model_name)
         onnx.save(SymbolicShapeInference.infer_shapes(onnx.load(int8_model_name)), int8_model_name)
         sess = onnxruntime.InferenceSession(int8_model_name)
@@ -140,41 +179,56 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
 
 def perf_test_auto(auto_file):
     # generate reports in csv format
-    with open('single_thread_' + auto_file + '.csv', 'w') as f:
+    with open(f'single_thread_{auto_file}.csv', 'w') as f:
         print('single thread test: unidirection 4-layer lstm/gru/rnn with input_dim=128 batch_size=1', file=f)
         print('rnn_type,hidden,seq_len,avg_rnn,avg_nuphar_fp,avg_nuphar_int8,speedup_fp,speedup_int8', file=f)
         for rnn_type in ['lstm', 'gru', 'rnn']:
             for hidden_dim in [32, 128, 1024, 2048]:
                 for seq_len in [1, 16, 32, 64]:
                     avg_rnn, avg_scan, avg_int8 = perf_test(rnn_type, 1, 128, hidden_dim, False, 4, seq_len, 1)
-                    print('{},{},{},{},{},{},{},{}'.format(rnn_type,hidden_dim, seq_len, avg_rnn, avg_scan, avg_int8, avg_rnn/avg_scan, avg_rnn/avg_int8), file=f)
+                    print(
+                        f'{rnn_type},{hidden_dim},{seq_len},{avg_rnn},{avg_scan},{avg_int8},{avg_rnn / avg_scan},{avg_rnn / avg_int8}',
+                        file=f,
+                    )
 
-    with open('multi_thread_' + auto_file + '.csv', 'w') as f:
+
+    with open(f'multi_thread_{auto_file}.csv', 'w') as f:
         print('multi-thread test: unidirection 4-layer lstm/gru/rnn with input_dim=128 seq_len=32 batch_size=1', file=f)
         print('rnn_type,threads,hidden,avg_rnn,avg_nuphar_fp,avg_nuphar_int8,speedup_fp,speedup_int8', file=f)
         for rnn_type in ['lstm', 'gru', 'rnn']:
             for num_threads in [1, 2, 4]:
                 for hidden_dim in [32, 128, 1024, 2048]:
                     avg_rnn, avg_scan, avg_int8 = perf_test(rnn_type, num_threads, 128, hidden_dim, False, 4, seq_len, 1)
-                    print('{},{},{},{},{},{},{},{}'.format(rnn_type,num_threads, hidden_dim, avg_rnn, avg_scan, avg_int8, avg_rnn/avg_scan, avg_rnn/avg_int8), file=f)
+                    print(
+                        f'{rnn_type},{num_threads},{hidden_dim},{avg_rnn},{avg_scan},{avg_int8},{avg_rnn / avg_scan},{avg_rnn / avg_int8}',
+                        file=f,
+                    )
 
-    with open('batch_single_thread_' + auto_file + '.csv', 'w') as f:
+
+    with open(f'batch_single_thread_{auto_file}.csv', 'w') as f:
         print('single thread test: unidirection 4-layer lstm/gru/rnn with input_dim=128 hidden_dim=1024', file=f)
         print('rnn_type,seq_len,batch_size,avg_rnn,avg_nuphar_fp,avg_nuphar_int8,speedup_fp,speedup_int8', file=f)
         for rnn_type in ['lstm', 'gru', 'rnn']:
             for seq_len in [1, 16, 32, 64]:
                 for batch_size in [1, 4, 16, 64]:
                     avg_rnn, avg_scan, avg_int8 = perf_test(rnn_type, 1, 128, 1024, False, 4, seq_len, batch_size)
-                    print('{},{},{},{},{},{},{},{}'.format(rnn_type,seq_len, batch_size, avg_rnn, avg_scan, avg_int8, avg_rnn/avg_scan, avg_rnn/avg_int8), file=f)
+                    print(
+                        f'{rnn_type},{seq_len},{batch_size},{avg_rnn},{avg_scan},{avg_int8},{avg_rnn / avg_scan},{avg_rnn / avg_int8}',
+                        file=f,
+                    )
 
-    with open('batch_multi_thread_' + auto_file + '.csv', 'w') as f:
+
+    with open(f'batch_multi_thread_{auto_file}.csv', 'w') as f:
         print('batch thread test: unidirection 4-layer lstm/gru/rnn with input_dim=128 hidden_dim=1024 seq_len=32', file=f)
         print('rnn_type,threads,batch_size,avg_rnn,avg_nuphar_fp,avg_nuphar_int8,speedup_fp,speedup_int8', file=f)
         for rnn_type in ['lstm', 'gru', 'rnn']:
             for num_threads in [1, 2, 4]:
                 for batch_size in [1, 4, 16, 64]:
                     avg_rnn, avg_scan, avg_int8 = perf_test(rnn_type, num_threads, 128, 1024, False, 4, 32, batch_size)
-                    print('{},{},{},{},{},{},{},{}'.format(rnn_type,num_threads, batch_size, avg_rnn, avg_scan, avg_int8, avg_rnn/avg_scan, avg_rnn/avg_int8), file=f)
+                    print(
+                        f'{rnn_type},{num_threads},{batch_size},{avg_rnn},{avg_scan},{avg_int8},{avg_rnn / avg_scan},{avg_rnn / avg_int8}',
+                        file=f,
+                    )
 
 def parse_arguments():
   parser = argparse.ArgumentParser()

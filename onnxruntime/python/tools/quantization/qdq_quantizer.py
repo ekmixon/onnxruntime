@@ -46,27 +46,28 @@ class QDQQuantizer(ONNXQuantizer):
                 self.tensors_to_quantize.append(tensor_name)
         else:
             logging.warning(
-                "failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".format(
-                    tensor_name))
+                f"failed to infer the type of tensor: {tensor_name}. Skip to quantize it. Please check if it is expected."
+            )
 
     def quantize_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
-        if weight is not None:
-            if weight.data_type == onnx_proto.TensorProto.FLOAT:
-                self.tensors_to_quantize_per_channel.append((tensor_name, axis))
-        else:
+        if weight is None:
             logging.warning(
-                "only support per-channel quantization on weight. Quantize tensor: {} with per-tensor instead.".format(
-                    tensor_name))
+                f"only support per-channel quantization on weight. Quantize tensor: {tensor_name} with per-tensor instead."
+            )
+
             self.quantize_tensor(tensor_name)
+
+        elif weight.data_type == onnx_proto.TensorProto.FLOAT:
+            self.tensors_to_quantize_per_channel.append((tensor_name, axis))
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name):
         weight = find_by_name(bias_name, self.model.initializer())
-        if weight is not None:
-            if weight.data_type == onnx_proto.TensorProto.FLOAT:
-                self.bias_to_quantize.append((bias_name, input_name, weight_name))
-        else:
-            logging.warning("Expected {} to be a weight".format(bias_name))
+        if weight is None:
+            logging.warning(f"Expected {bias_name} to be a weight")
+
+        elif weight.data_type == onnx_proto.TensorProto.FLOAT:
+            self.bias_to_quantize.append((bias_name, input_name, weight_name))
 
     def remove_node(self, node):
         self.nodes_to_remove.append(node)
@@ -109,32 +110,57 @@ class QDQQuantizer(ONNXQuantizer):
                 q_weight_name, zp_name, scale_name = self.quantize_weight(initializer, self.weight_qType)
 
                 inputs = [q_weight_name, scale_name, zp_name]
-                output_name = tensor_name + '_DequantizeLinear'
-                node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
-                                             tensor_name + '_DequantizeLinear')
+                output_name = f'{tensor_name}_DequantizeLinear'
+                node = onnx.helper.make_node(
+                    "DequantizeLinear",
+                    inputs,
+                    [output_name],
+                    f'{tensor_name}_DequantizeLinear',
+                )
+
                 self.model.add_node(node)
-                self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
+                self.model.replace_input_of_all_nodes(
+                    tensor_name, f"{tensor_name}_DequantizeLinear"
+                )
+
             else:
                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
                 if data_found == False:
                     raise ValueError(
-                        "Quantization parameters are not specified for param {}."
-                        "In static mode quantization params for inputs and outputs of nodes to be quantized are required."
-                        .format(tensor_name))
+                        f"Quantization parameters are not specified for param {tensor_name}.In static mode quantization params for inputs and outputs of nodes to be quantized are required."
+                    )
 
-                qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name],
-                                                     [tensor_name + "_QuantizeLinear"], tensor_name + "_QuantizeLinear")
-                dequant_node = onnx.helper.make_node("DequantizeLinear",
-                                                     [tensor_name + "_QuantizeLinear", scale_name, zp_name],
-                                                     [tensor_name + "_DequantizeLinear"],
-                                                     tensor_name + "_DequantizeLinear")
-                self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
+
+                qlinear_node = onnx.helper.make_node(
+                    "QuantizeLinear",
+                    [tensor_name, scale_name, zp_name],
+                    [f"{tensor_name}_QuantizeLinear"],
+                    f"{tensor_name}_QuantizeLinear",
+                )
+
+                dequant_node = onnx.helper.make_node(
+                    "DequantizeLinear",
+                    [f"{tensor_name}_QuantizeLinear", scale_name, zp_name],
+                    [f"{tensor_name}_DequantizeLinear"],
+                    f"{tensor_name}_DequantizeLinear",
+                )
+
+                self.model.replace_input_of_all_nodes(
+                    tensor_name, f"{tensor_name}_DequantizeLinear"
+                )
+
 
                 self.model.add_nodes([qlinear_node, dequant_node])
 
-                quantized_value = QuantizedValue(tensor_name, tensor_name + "_QuantizeLinear", scale_name, zp_name,
-                                                 QuantizedValueType.Input)
+                quantized_value = QuantizedValue(
+                    tensor_name,
+                    f"{tensor_name}_QuantizeLinear",
+                    scale_name,
+                    zp_name,
+                    QuantizedValueType.Input,
+                )
+
                 self.quantized_value_map[tensor_name] = quantized_value
 
     def quantize_bias_tensors(self):
@@ -147,13 +173,22 @@ class QDQQuantizer(ONNXQuantizer):
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
             if quant_value.axis is not None:
-                dequant_node = onnx.helper.make_node("DequantizeLinear",
-                                                     inputs, [bias_name],
-                                                     bias_name + '_DequantizeLinear',
-                                                     axis=quant_value.axis)
+                dequant_node = onnx.helper.make_node(
+                    "DequantizeLinear",
+                    inputs,
+                    [bias_name],
+                    f'{bias_name}_DequantizeLinear',
+                    axis=quant_value.axis,
+                )
+
             else:
-                dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name],
-                                                     bias_name + '_DequantizeLinear')
+                dequant_node = onnx.helper.make_node(
+                    "DequantizeLinear",
+                    inputs,
+                    [bias_name],
+                    f'{bias_name}_DequantizeLinear',
+                )
+
             self.model.add_node(dequant_node)
 
     def quantize_weights_per_channel(self):
@@ -165,11 +200,15 @@ class QDQQuantizer(ONNXQuantizer):
                                                                            axis)
 
             inputs = [q_name, scale_name, zp_name]
-            output_name = weight_name + "_DequantizeLinear"
-            node = onnx.helper.make_node("DequantizeLinear",
-                                         inputs, [output_name],
-                                         weight_name + '_DequantizeLinear',
-                                         axis=axis)
+            output_name = f"{weight_name}_DequantizeLinear"
+            node = onnx.helper.make_node(
+                "DequantizeLinear",
+                inputs,
+                [output_name],
+                f'{weight_name}_DequantizeLinear',
+                axis=axis,
+            )
+
             self.model.add_node(node)
 
             # Replace weight_name with output of DequantizeLinear

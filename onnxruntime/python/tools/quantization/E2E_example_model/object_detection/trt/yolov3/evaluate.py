@@ -47,9 +47,7 @@ class YoloV3Evaluator:
 
         f = open(onnx_object_class_file, 'r')
         lines = f.readlines()
-        for c in lines:
-            self.onnx_class_list.append(c.strip('\n'))
-
+        self.onnx_class_list.extend(c.strip('\n') for c in lines)
         self.generate_class_to_id(ground_truth_object_class_file)
         print(self.class_to_id)
 
@@ -112,8 +110,6 @@ class YoloV3Evaluator:
     def predict(self):
         session = self.session
 
-        outputs = []
-
         # If you decide to run batch inference, please make sure all input images must be re-sized to the same shape.
         # Which means the bounding boxes from groun truth annotation must to be adjusted accordingly, otherwise you will get very low mAP results.
         # Here we simply choose to run serial inference.
@@ -123,6 +119,8 @@ class YoloV3Evaluator:
 
             image_id_list = []
             image_id_batch = []
+            outputs = []
+
             while True:
                 inputs = self.data_reader.get_next()
                 if not inputs:
@@ -221,7 +219,7 @@ class YoloV3VariantEvaluator(YoloV3Evaluator):
 
         for i in range(len(outputs)):
             output = outputs[i]
-            
+
             for batch_i in range(self.data_reader.get_batch_size()):
 
                 if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
@@ -423,7 +421,7 @@ def post_process_without_nms(opts):
         bbox[:, 2] *= opt.input_w  #w
         bbox[:, 3] *= opt.input_h  #h
         bbox = xywh2xyxy(bbox)
-        bbox0 = scale_coords(img.shape[2:], bbox, img0.shape[0:2])
+        bbox0 = scale_coords(img.shape[2:], bbox, img0.shape[:2])
         if bbox0.shape[0] == 0:
             final_output.append(torch.empty(0, 5).numpy())
             continue
@@ -488,7 +486,7 @@ class YoloV3Variant3Evaluator(YoloV3Evaluator):
         image_id_batch = []
         image_size_list = []
         image_size_batch = []
-            
+
         class_name = 'person'
         id = self.class_to_id[class_name]
 

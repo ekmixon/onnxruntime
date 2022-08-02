@@ -5,6 +5,7 @@
 """
 Ensure that dependencies are available and then load the extension module.
 """
+
 import os
 import platform
 import sys
@@ -22,13 +23,15 @@ if platform.system() == "Windows":
             if cuda_env_variable not in os.environ:
                 raise ImportError(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
         else:
-            # With CUDA 11 and newer only the major version at build time/runtime has to match.
-            # Use the most recent minor version available.
-            cuda_env_variable = None
-            for i in range(9, -1, -1):
-                if f"CUDA_PATH_V{cuda_version_major}_{i}" in os.environ:
-                    cuda_env_variable = f"CUDA_PATH_V{cuda_version_major}_{i}"
-                    break
+            cuda_env_variable = next(
+                (
+                    f"CUDA_PATH_V{cuda_version_major}_{i}"
+                    for i in range(9, -1, -1)
+                    if f"CUDA_PATH_V{cuda_version_major}_{i}" in os.environ
+                ),
+                None,
+            )
+
             if not cuda_env_variable:
                 raise ImportError(f"CUDA Toolkit {cuda_version_major}.x not installed on the machine.")
 
@@ -51,9 +54,12 @@ if platform.system() == "Windows":
             # installed on the machine.)
             os.environ["PATH"] += cuda_bin_dir + os.pathsep + os.environ["PATH"]
 
-    if version_info.vs2019 and platform.architecture()[0] == "64bit":
-        if not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):
-            raise ImportError(
-                "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
+    if (
+        version_info.vs2019
+        and platform.architecture()[0] == "64bit"
+        and not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll")
+    ):
+        raise ImportError(
+            "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
 
 from .onnxruntime_pybind11_state import *  # noqa

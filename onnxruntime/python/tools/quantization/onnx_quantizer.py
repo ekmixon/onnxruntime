@@ -30,9 +30,11 @@ class ONNXQuantizer:
 
         # run shape inference on the model
         model = onnx.shape_inference.infer_shapes(model)
-        self.value_infos = {vi.name: vi for vi in model.graph.value_info}
-        self.value_infos.update({ot.name: ot for ot in model.graph.output})
-        self.value_infos.update({it.name: it for it in model.graph.input})
+        self.value_infos = (
+            {vi.name: vi for vi in model.graph.value_info}
+            | {ot.name: ot for ot in model.graph.output}
+            | {it.name: it for it in model.graph.input}
+        )
 
         self.model = ONNXModel(model)
         self.per_channel = per_channel  # weight-pack per channel
@@ -63,8 +65,8 @@ class ONNXQuantizer:
 
         self.opset_version = self.check_opset_version()
 
-        if not self.mode in QuantizationMode:
-            raise ValueError('unsupported quantization mode {}'.format(self.mode))
+        if self.mode not in QuantizationMode:
+            raise ValueError(f'unsupported quantization mode {self.mode}')
 
         self.quantization_params = self.calculate_quantization_params()
 
@@ -84,20 +86,22 @@ class ONNXQuantizer:
         ai_onnx_domain = [
             opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"
         ]
-        if 1 != len(ai_onnx_domain):
+        if len(ai_onnx_domain) != 1:
             raise ValueError('Failed to find proper ai.onnx domain')
         opset_version = ai_onnx_domain[0].version
 
         if opset_version == 10:
             logging.warning(
-                "The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
-                .format(opset_version))
+                f"The original model opset version is {opset_version}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
+            )
+
             return 10
 
         if opset_version < 10:
             logging.warning(
-                "The original model opset version is {}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
-                .format(opset_version))
+                f"The original model opset version is {opset_version}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
+            )
+
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
             opset_version = 11
@@ -121,18 +125,23 @@ class ONNXQuantizer:
                         next_node = child_node
                 if next_node is None:
                     raise ValueError(
-                        "Remove fake-quantized node pair Error: DequantizeLinear node is not found for {}.".format(
-                            curr_node.name))
+                        f"Remove fake-quantized node pair Error: DequantizeLinear node is not found for {curr_node.name}."
+                    )
+
 
                 prev_node = self.model.get_parent(curr_node, 0)
                 if prev_node is None:
-                    raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
-                        curr_node.name))
+                    raise ValueError(
+                        f"Remove fake-quantized node pair Error: Parent node is not found for {curr_node.name}."
+                    )
+
 
                 succ_nodes = self.model.get_children(next_node)
                 if len(succ_nodes) == 0:
-                    raise ValueError("Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
-                        next_node.name))
+                    raise ValueError(
+                        f"Remove fake-quantized node pair Error: No successive nodes found for {next_node.name}."
+                    )
+
 
                 # TODO: convert it to the specified input_type
                 scale_tensor_name = curr_node.input[1]
@@ -151,22 +160,17 @@ class ONNXQuantizer:
                         succ_node.input[succ_idx] = curr_node.input[0]
                     else:
                         raise ValueError(
-                            "Remove fake-quantized node pair Error: Connection failed. No matched successive node input found for {}."
-                            .format(next_node.name))
+                            f"Remove fake-quantized node pair Error: Connection failed. No matched successive node input found for {next_node.name}."
+                        )
+
 
                 param_name = curr_node.input[0]
                 if self.quantization_params is None:
                     self.quantization_params = {}
                 self.quantization_params[param_name] = zp_and_scale
 
-                # remove fake-quantized nodes
-                nodes_to_remove.extend([curr_node])
-                nodes_to_remove.extend([next_node])
-
-                # remove unused initializers in graph
-                initializers_to_remove.extend([initializer_scale])
-                initializers_to_remove.extend([initializer_zp])
-
+                nodes_to_remove.extend([curr_node, next_node])
+                initializers_to_remove.extend([initializer_scale, initializer_zp])
         self.model.remove_nodes(nodes_to_remove)
         self.model.remove_initializers(initializers_to_remove)
 
@@ -180,10 +184,7 @@ class ONNXQuantizer:
         if (node.op_type not in self.op_types_to_quantize):
             return False
 
-        if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
-            return False
-
-        return True
+        return self.nodes_to_exclude is None or node.name not in self.nodes_to_exclude
 
     def quantize_model(self):
         self.remove_fake_quantized_nodes()
@@ -216,8 +217,10 @@ class ONNXQuantizer:
         if initializer.data_type == onnx_proto.TensorProto.FLOAT:
             weights = onnx.numpy_helper.to_array(initializer)
         else:
-            raise ValueError('Only float type quantization is supported. Weights {} is {}. '.format(
-                initializer.name, type_to_name[initializer.data_type]))
+            raise ValueError(
+                f'Only float type quantization is supported. Weights {initializer.name} is {type_to_name[initializer.data_type]}. '
+            )
+
         return weights
 
     def is_input_a_weight(self, input_name):
@@ -254,41 +257,66 @@ class ONNXQuantizer:
         qType = onnx_proto.TensorProto.INT8
 
         # Reduce min and Reduce max
-        input_scale_name = input_name + "_scale"
+        input_scale_name = f"{input_name}_scale"
 
-        reduce_min_name = input_name + "_ReduceMin"
-        reduce_min_node = onnx.helper.make_node("ReduceMin", [input_name], [reduce_min_name + ":0"],
-                                                reduce_min_name,
-                                                keepdims=0)
+        reduce_min_name = f"{input_name}_ReduceMin"
+        reduce_min_node = onnx.helper.make_node(
+            "ReduceMin",
+            [input_name],
+            [f"{reduce_min_name}:0"],
+            reduce_min_name,
+            keepdims=0,
+        )
+
         nodes_list.append(reduce_min_node)
 
-        reduce_max_name = input_name + "_ReduceMax"
-        reduce_max_node = onnx.helper.make_node("ReduceMax", [input_name], [reduce_max_name + ":0"],
-                                                reduce_max_name,
-                                                keepdims=0)
+        reduce_max_name = f"{input_name}_ReduceMax"
+        reduce_max_node = onnx.helper.make_node(
+            "ReduceMax",
+            [input_name],
+            [f"{reduce_max_name}:0"],
+            reduce_max_name,
+            keepdims=0,
+        )
+
         nodes_list.append(reduce_max_node)
 
         # Compute scale
         #   Find abs(rmin)
-        reduce_min_abs_name = reduce_min_name + "_Abs"
-        reduce_min_abs_node = onnx.helper.make_node("Abs", [reduce_min_node.output[0]], [reduce_min_abs_name + ":0"],
-                                                    reduce_min_abs_name)
+        reduce_min_abs_name = f"{reduce_min_name}_Abs"
+        reduce_min_abs_node = onnx.helper.make_node(
+            "Abs",
+            [reduce_min_node.output[0]],
+            [f"{reduce_min_abs_name}:0"],
+            reduce_min_abs_name,
+        )
+
         nodes_list.append(reduce_min_abs_node)
         #   Find abs(rmax)
-        reduce_max_abs_name = reduce_max_name + "_Abs"
-        reduce_max_abs_node = onnx.helper.make_node("Abs", [reduce_max_node.output[0]], [reduce_max_abs_name + ":0"],
-                                                    reduce_max_abs_name)
+        reduce_max_abs_name = f"{reduce_max_name}_Abs"
+        reduce_max_abs_node = onnx.helper.make_node(
+            "Abs",
+            [reduce_max_node.output[0]],
+            [f"{reduce_max_abs_name}:0"],
+            reduce_max_abs_name,
+        )
+
         nodes_list.append(reduce_max_abs_node)
         #   Compute max of abs(rmin) and abs(rmax)
-        abs_max_name = input_name + "_Abs_Max"
-        abs_max_node = onnx.helper.make_node("Max", [reduce_min_abs_node.output[0], reduce_max_abs_node.output[0]],
-                                             [abs_max_name + ":0"], abs_max_name)
+        abs_max_name = f"{input_name}_Abs_Max"
+        abs_max_node = onnx.helper.make_node(
+            "Max",
+            [reduce_min_abs_node.output[0], reduce_max_abs_node.output[0]],
+            [f"{abs_max_name}:0"],
+            abs_max_name,
+        )
+
         nodes_list.append(abs_max_node)
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
         initializer_div = onnx.helper.make_tensor(self.fixed_qrange_int8_name, onnx_proto.TensorProto.FLOAT, [],
                                                   [get_qrange_for_qType(qType) / 2.0])
         self.model.add_initializer(initializer_div)
-        scale_div_name = input_name + "scale_Div"
+        scale_div_name = f"{input_name}scale_Div"
         scale_div_node = onnx.helper.make_node("Div", [abs_max_node.output[0], self.fixed_qrange_int8_name],
                                                [input_scale_name], scale_div_name)
         nodes_list.append(scale_div_node)
@@ -308,19 +336,29 @@ class ONNXQuantizer:
         '''
         qType = onnx_proto.TensorProto.UINT8
         # Reduce min and Reduce max
-        input_scale_name = input_name + "_scale"
-        input_zp_name = input_name + "_zero_point"
+        input_scale_name = f"{input_name}_scale"
+        input_zp_name = f"{input_name}_zero_point"
 
-        reduce_min_name = input_name + "_ReduceMin"
-        reduce_min_node = onnx.helper.make_node("ReduceMin", [input_name], [reduce_min_name + ":0"],
-                                                reduce_min_name,
-                                                keepdims=0)
+        reduce_min_name = f"{input_name}_ReduceMin"
+        reduce_min_node = onnx.helper.make_node(
+            "ReduceMin",
+            [input_name],
+            [f"{reduce_min_name}:0"],
+            reduce_min_name,
+            keepdims=0,
+        )
+
         nodes_list.append(reduce_min_node)
 
-        reduce_max_name = input_name + "_ReduceMax"
-        reduce_max_node = onnx.helper.make_node("ReduceMax", [input_name], [reduce_max_name + ":0"],
-                                                reduce_max_name,
-                                                keepdims=0)
+        reduce_max_name = f"{input_name}_ReduceMax"
+        reduce_max_node = onnx.helper.make_node(
+            "ReduceMax",
+            [input_name],
+            [f"{reduce_max_name}:0"],
+            reduce_max_name,
+            keepdims=0,
+        )
+
         nodes_list.append(reduce_max_node)
 
         # Add tensors for quantize range and zero value.
@@ -332,33 +370,51 @@ class ONNXQuantizer:
 
         # Compute Scale
         #   Subtract rmax and rmin
-        scale_sub_name = input_name + "_scale_Sub"
-        scale_sub_node = onnx.helper.make_node("Sub", [reduce_max_node.output[0], reduce_min_node.output[0]],
-                                               [scale_sub_name + ":0"], scale_sub_name)
+        scale_sub_name = f"{input_name}_scale_Sub"
+        scale_sub_node = onnx.helper.make_node(
+            "Sub",
+            [reduce_max_node.output[0], reduce_min_node.output[0]],
+            [f"{scale_sub_name}:0"],
+            scale_sub_name,
+        )
+
         nodes_list.append(scale_sub_node)
         #   and divide by quantize range
-        scale_div_name = input_name + "_scale_Div"
+        scale_div_name = f"{input_name}_scale_Div"
         scale_div_node = onnx.helper.make_node("Div", [scale_sub_node.output[0], self.fixed_qrange_uint8_name],
                                                [input_scale_name], scale_div_name)
         nodes_list.append(scale_div_node)
 
         # Compute zero point
         #   Subtract zero and rmin
-        zp_sub_name = input_name + "_zero_point_Sub"
-        zp_sub_node = onnx.helper.make_node("Sub", [self.fixed_zero_name, reduce_min_node.output[0]],
-                                            [zp_sub_name + ":0"], zp_sub_name)
+        zp_sub_name = f"{input_name}_zero_point_Sub"
+        zp_sub_node = onnx.helper.make_node(
+            "Sub",
+            [self.fixed_zero_name, reduce_min_node.output[0]],
+            [f"{zp_sub_name}:0"],
+            zp_sub_name,
+        )
+
         nodes_list.append(zp_sub_node)
         #   Divide by scale
-        zp_div_name = input_name + "_zero_point_Div"
-        zp_div_node = onnx.helper.make_node("Div", [zp_sub_node.output[0], input_scale_name], [zp_div_name + ":0"],
-                                            zp_div_name)
+        zp_div_name = f"{input_name}_zero_point_Div"
+        zp_div_node = onnx.helper.make_node(
+            "Div",
+            [zp_sub_node.output[0], input_scale_name],
+            [f"{zp_div_name}:0"],
+            zp_div_name,
+        )
+
         nodes_list.append(zp_div_node)
         #   Compute floor
-        zp_floor_name = input_name + "_zero_point_Floor"
-        zp_floor_node = onnx.helper.make_node("Floor", zp_div_node.output, [zp_floor_name + ":0"], zp_floor_name)
+        zp_floor_name = f"{input_name}_zero_point_Floor"
+        zp_floor_node = onnx.helper.make_node(
+            "Floor", zp_div_node.output, [f"{zp_floor_name}:0"], zp_floor_name
+        )
+
         nodes_list.append(zp_floor_node)
         #   Cast to integer
-        zp_cast_name = input_name + "_zero_point_Cast"
+        zp_cast_name = f"{input_name}_zero_point_Cast"
         zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType)
         nodes_list.append(zp_cast_node)
 
@@ -377,8 +433,10 @@ class ONNXQuantizer:
 
             params = self.quantization_params[param_name]
             if params is None or len(params) != 2:
-                raise ValueError("Quantization parameters should contain zero point and scale. "
-                                 "Specified values for output {}: {}".format(param_name, params))
+                raise ValueError(
+                    f"Quantization parameters should contain zero point and scale. Specified values for output {param_name}: {params}"
+                )
+
 
             zero_point_values = [params[0]]
             scale_values = [params[1]]
@@ -387,10 +445,10 @@ class ONNXQuantizer:
             scale_values = [use_scale]
 
         zero_point_shape = []
-        zero_point_name = param_name + "_zero_point"
+        zero_point_name = f"{param_name}_zero_point"
         zero_point_type = self.input_qType
         scale_shape = []
-        scale_name = param_name + "_scale"
+        scale_name = f"{param_name}_scale"
 
         # Add initializers
         init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
@@ -413,8 +471,8 @@ class ONNXQuantizer:
             return: List of newly created nodes in NodeProto format.
         '''
         input_name = node.input[input_index]
-        output_name = input_name + "_quantized"
-        ql_node_name = input_name + "_QuantizeLinear"
+        output_name = f"{input_name}_quantized"
+        ql_node_name = f"{input_name}_QuantizeLinear"
 
         if (given_scale_name is not None) and (given_zp_name is not None):
             data_found, scale_name, zp_name = (True, given_scale_name, given_zp_name)
@@ -428,19 +486,19 @@ class ONNXQuantizer:
         else:
             if self.static:
                 raise ValueError(
-                    "Quantization parameters are not specified for param {}."
-                    "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
-                    format(input_name))
+                    f"Quantization parameters are not specified for param {input_name}.In static mode quantization params for inputs and outputs of nodes to be quantized are required."
+                )
+
             # dynamic mode
             # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
             if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
-                scale_name = input_name + "_scale"
-                zp_name = input_name + "_zero_point"
+                scale_name = f"{input_name}_scale"
+                zp_name = f"{input_name}_zero_point"
                 qlinear_node = onnx.helper.make_node("DynamicQuantizeLinear", [input_name],
                                                      [output_name, scale_name, zp_name], ql_node_name)
             else:
                 scale_name, zp_name, scale_shape, zp_shape = \
-                    self._get_dynamic_input_quantization_params(input_name, nodes, qType)
+                        self._get_dynamic_input_quantization_params(input_name, nodes, qType)
                 qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name],
                                                      [output_name], ql_node_name)
 
@@ -458,11 +516,11 @@ class ONNXQuantizer:
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], self.model.initializer())
         if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+            raise ValueError(f"Expected {node.input[1]} to be an initializer")
 
         # Add reshape for correct broadcase
         reshape_input_data = quantized_bias_name
-        reshape_input_shape = quantized_bias_name + "_reshape_shape"
+        reshape_input_shape = f"{quantized_bias_name}_reshape_shape"
         reshape_input = [reshape_input_data, reshape_input_shape]
 
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
@@ -471,16 +529,26 @@ class ONNXQuantizer:
                                              reshape_shape)
         self.model.add_initializer(init_shape)
 
-        reshape_op_output = node.output[0] + "_reshape"
-        reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
-                                             quantized_bias_name + "reshape")
+        reshape_op_output = f"{node.output[0]}_reshape"
+        reshape_node = onnx.helper.make_node(
+            "Reshape",
+            reshape_input,
+            [reshape_op_output],
+            f"{quantized_bias_name}reshape",
+        )
+
         nodes.append(reshape_node)
 
         # Add an Add operation for bias
-        bias_add_input = [last_output]
-        bias_add_input.append(reshape_op_output)
-        add_node_output = node.output[0] + "_bias_add"
-        add_node = onnx.helper.make_node("Add", bias_add_input, [add_node_output], quantized_bias_name + "bias_add")
+        bias_add_input = [last_output, reshape_op_output]
+        add_node_output = f"{node.output[0]}_bias_add"
+        add_node = onnx.helper.make_node(
+            "Add",
+            bias_add_input,
+            [add_node_output],
+            f"{quantized_bias_name}bias_add",
+        )
+
         nodes.append(add_node)
         return add_node_output
 
@@ -497,27 +565,46 @@ class ONNXQuantizer:
         # get bias
         bias_initializer = find_by_name(bias_name, self.model.initializer())
         bias_data = self.tensor_proto_to_array(bias_initializer)
-        quantized_bias_name = bias_name + "_quantized"
+        quantized_bias_name = f"{bias_name}_quantized"
 
         qType = onnx_proto.TensorProto.INT32
 
-        input_scale_name = input_name + "_scale"
-        bias_scale_node = onnx.helper.make_node("Mul", [input_scale_name, weight_scale_name], [bias_name + "_scale"],
-                                                bias_name + "_scale_node")
+        input_scale_name = f"{input_name}_scale"
+        bias_scale_node = onnx.helper.make_node(
+            "Mul",
+            [input_scale_name, weight_scale_name],
+            [f"{bias_name}_scale"],
+            f"{bias_name}_scale_node",
+        )
+
         new_node_list.append(bias_scale_node)
 
-        quantize_bias_node = onnx.helper.make_node("Div", [bias_name, bias_scale_node.output[0]],
-                                                   [bias_name + "_tmp_quant:0"], bias_name + "_tmp_qaunt")
+        quantize_bias_node = onnx.helper.make_node(
+            "Div",
+            [bias_name, bias_scale_node.output[0]],
+            [f"{bias_name}_tmp_quant:0"],
+            f"{bias_name}_tmp_qaunt",
+        )
+
         new_node_list.append(quantize_bias_node)
 
-        bias_rounded_node = onnx.helper.make_node("Floor", quantize_bias_node.output, [bias_name + "_quant_rounded:0"],
-                                                  bias_name + "_quant_rounded")
+        bias_rounded_node = onnx.helper.make_node(
+            "Floor",
+            quantize_bias_node.output,
+            [f"{bias_name}_quant_rounded:0"],
+            f"{bias_name}_quant_rounded",
+        )
+
         new_node_list.append(bias_rounded_node)
 
-        bias_cast_node = onnx.helper.make_node("Cast",
-                                               bias_rounded_node.output, [quantized_bias_name],
-                                               quantized_bias_name + "_node",
-                                               to=qType)
+        bias_cast_node = onnx.helper.make_node(
+            "Cast",
+            bias_rounded_node.output,
+            [quantized_bias_name],
+            f"{quantized_bias_name}_node",
+            to=qType,
+        )
+
         new_node_list.append(bias_cast_node)
 
         return quantized_bias_name
@@ -539,7 +626,7 @@ class ONNXQuantizer:
         # get bias
         bias_initializer = find_by_name(bias_name, self.model.initializer())
         bias_data = self.tensor_proto_to_array(bias_initializer)
-        quantized_bias_name = bias_name + "_quantized"
+        quantized_bias_name = f"{bias_name}_quantized"
 
         # get scale for input
         if input_name in self.quantized_value_map:
@@ -547,7 +634,10 @@ class ONNXQuantizer:
         elif input_name in self.quantization_params:
             _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
         else:
-            raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
+            raise ValueError(
+                f"Expected {input_name} to be in quantized value map for static quantization"
+            )
+
 
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
@@ -564,13 +654,13 @@ class ONNXQuantizer:
         self.model.initializer().extend([packed_bias_initializer])
 
         # update scale initializer
-        quantized_bias_scale_name = quantized_bias_name + "_scale"
+        quantized_bias_scale_name = f"{quantized_bias_name}_scale"
         bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
         packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         self.model.initializer().extend([packed_bias_scale_initializer])
 
         # update zero initializer
-        quantized_bias_zp_name = quantized_bias_name + "_zero_point"
+        quantized_bias_zp_name = f"{quantized_bias_name}_zero_point"
         bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
         packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         self.model.initializer().extend([packed_bias_zp_initializer])
@@ -624,8 +714,12 @@ class ONNXQuantizer:
                 scale_names.append(scale_name)
             else:
                 # Add QuantizeLinear node.
-                qlinear_node = self.model.find_node_by_name(node_input + "_QuantizeLinear", self.new_nodes,
-                                                            self.model.graph())
+                qlinear_node = self.model.find_node_by_name(
+                    f"{node_input}_QuantizeLinear",
+                    self.new_nodes,
+                    self.model.graph(),
+                )
+
                 if qlinear_node is None:
                     quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.input_qType)
                     nodes.extend(quantize_input_nodes)
@@ -653,9 +747,9 @@ class ONNXQuantizer:
             quantized_value = self.quantized_value_map[weight.name]
             return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
 
-        q_weight_name = weight.name + "_quantized"
-        zp_name = weight.name + "_zero_point"
-        scale_name = weight.name + "_scale"
+        q_weight_name = f"{weight.name}_quantized"
+        zp_name = f"{weight.name}_zero_point"
+        scale_name = f"{weight.name}_scale"
 
         # Update packed weight, zero point, and scale initializers
         weight_data = self.tensor_proto_to_array(weight)

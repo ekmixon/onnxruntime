@@ -23,7 +23,7 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     total_data_size = len(os.listdir(calibration_dataset))
     start_index = 0
     stride = 2000
-    for i in range(0, total_data_size, stride):
+    for _ in range(0, total_data_size, stride):
         data_reader = YoloV3DataReader(calibration_dataset,
                                        start_index=start_index,
                                        end_index=start_index + stride,
@@ -83,9 +83,9 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
 
     total_data_size = len(os.listdir(calibration_dataset))
     start_index = 0
-    stride = 20 
+    stride = 20
     batch_size = 1
-    for i in range(0, total_data_size, stride):
+    for _ in range(0, total_data_size, stride):
         data_reader = YoloV3VariantDataReader(calibration_dataset,
                                               width=width,
                                               height=height,
@@ -104,14 +104,6 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
     DataReader will use batch processing when batch_size > 1.
     '''
 
-    # batch_size = 20
-    # stride=1000
-    # data_reader = YoloV3VariantDataReader(calibration_dataset,
-                                          # width=width,
-                                          # height=height,
-                                          # stride=stride,
-                                          # batch_size=batch_size,
-                                          # model_path=augmented_model_path)
     # calibrator.collect_data(data_reader)
 
     write_calibration_table(calibrator.compute_range())
@@ -119,15 +111,15 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
 
 
 def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, providers):
-    width = 608 
-    height = 608 
+    width = 608
+    height = 608
     evaluator = YoloV3VariantEvaluator(model_path, None, width=width, height=height, providers=providers)
 
-    total_data_size = len(os.listdir(validation_dataset)) 
+    total_data_size = len(os.listdir(validation_dataset))
     start_index = 0
     stride=1000
     batch_size = 1
-    for i in range(0, total_data_size, stride):
+    for _ in range(0, total_data_size, stride):
         data_reader = YoloV3VariantDataReader(validation_dataset,
                                               width=width,
                                               height=height,

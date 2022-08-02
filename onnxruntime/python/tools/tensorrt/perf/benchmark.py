@@ -64,17 +64,13 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     for i in range(len(ort_inputs)):
         name = ort_inputs[i].name
 
-        shape = []
-        for j in all_inputs_shape[i]:
-            shape.append(str(j))
+        shape = [str(j) for j in all_inputs_shape[i]]
         shape = "x".join(shape)
         shape = name + ':' + shape
         input_shape.append(shape)
 
     shapes_arg = '--optShapes=' + ','.join(input_shape)
     logger.info(shapes_arg)
-
-    result = {}
 
     if fp16:
         out = get_output([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg])
@@ -93,8 +89,7 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     target = target_list[2]
     start = target.find('mean:') + 6
     end = target.find('ms')
-    result["average_latency_ms"] = target[start:end]
-
+    result = {"average_latency_ms": target[start:end]}
     target = target_list[3]
     start = target.find('percentile:') + 12
     end = target.find('ms')
@@ -105,8 +100,7 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
 
 def get_trtexec_path(): 
     trtexec_options = get_output(["find", "/", "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/workspace/.*/bin/trtexec', trtexec_options).group()
-    return trtexec_path
+    return re.search(r'.*/workspace/.*/bin/trtexec', trtexec_options).group()
 
 def get_latency_result(runtimes, batch_size, mem_mb=None):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
@@ -123,7 +117,7 @@ def get_latency_result(runtimes, batch_size, mem_mb=None):
         "QPS": "{:.2f}".format(throughput),
     }
     if mem_mb:
-        result.update({"memory":mem_mb})
+        result["memory"] = mem_mb
     return result
 
 
@@ -139,10 +133,12 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
         segment_ids = ort_input[3]
 
         sess_inputs = {
-                "unique_ids_raw_output___9:0": unique_ids_raw_output,
-                "input_ids:0": input_ids[0:1],
-                "input_mask:0": input_mask[0:1],
-                "segment_ids:0": segment_ids[0:1]}
+            "unique_ids_raw_output___9:0": unique_ids_raw_output,
+            "input_ids:0": input_ids[:1],
+            "input_mask:0": input_mask[:1],
+            "segment_ids:0": segment_ids[:1],
+        }
+
         sess_outputs = ["unique_ids:0", "unstack:0", "unstack:1"]
 
     elif 'bidaf' in name.lower():
@@ -161,9 +157,10 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
         sess_inputs[session.get_inputs()[0].name] = ort_input
 
     else:
-        sess_inputs = {}
-        for i in range(len(session.get_inputs())):
-            sess_inputs[session.get_inputs()[i].name] = ort_input[i]
+        sess_inputs = {
+            session.get_inputs()[i].name: ort_input[i]
+            for i in range(len(session.get_inputs()))
+        }
 
     return (sess_inputs, sess_outputs)
 
@@ -178,17 +175,25 @@ def get_trtexec_pid(df, python_pid):
 def get_max_memory(trtexec): 
     df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
-    
+
     if trtexec: 
         pid = get_trtexec_pid(df, pid) 
-    
+
     mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
-    max_mem = max(mem_series.str.replace(' MiB','').astype(int))
-    return max_mem
+    return max(mem_series.str.replace(' MiB','').astype(int))
 
 def start_memory_tracking(): 
-    p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
-    return p
+    return subprocess.Popen(
+        [
+            "nvidia-smi",
+            "--query-compute-apps=pid,used_memory",
+            "--format=csv",
+            "-l",
+            "1",
+            "-f",
+            MEMORY_FILE,
+        ]
+    )
 
 def end_memory_tracking(p, trtexec): 
     p.terminate()
@@ -203,7 +208,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         repeat_times = 1 # warn-up run is included in ort_inputs
     else:
         repeat_times += 1 # add warn-up run
-    
+
     mem_usage = None
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
@@ -233,8 +238,8 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     logger.info(runtimes)
 
     result = {}
-    result.update(result_template)
-    result.update({"io_binding": False})
+    result |= result_template
+    result["io_binding"] = False
     latency_result = get_latency_result(runtimes, batch_size, mem_usage)
     result.update(latency_result)
     logger.info(result)
@@ -274,12 +279,10 @@ def get_acl_version():
     libarm_compute_path = p.stdout.decode("ascii").strip()
     if libarm_compute_path == '':
         return "No Compute Library Found"
-    else:
-        p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)  
-        libarm_so_strings = p.stdout.decode("ascii").strip()
-        version_match = re.search(r'arm_compute_version.*\n', libarm_so_strings)
-        version = version_match.group(0).split(' ')[0]
-        return version
+    p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)
+    libarm_so_strings = p.stdout.decode("ascii").strip()
+    version_match = re.search(r'arm_compute_version.*\n', libarm_so_strings)
+    return version_match[0].split(' ')[0]
 
 #######################################################################################################################################
 # The following two lists will be generated.
@@ -288,7 +291,7 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
-    logger.info("Parsing test data in {} ...".format(path))
+    logger.info(f"Parsing test data in {path} ...")
     p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
@@ -299,11 +302,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     inputs = []
     outputs = []
 
-    shape_flag = False
-    # if not empty means input shape has been parsed before.
-    if len(all_inputs_shape) > 0:
-        shape_flag = True
-
+    shape_flag = len(all_inputs_shape) > 0
     # find test data path
     for test_data_dir in test_data_set_dir:
         pwd = os.getcwd()
@@ -334,7 +333,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.info('Loaded {} inputs successfully.'.format(len(inputs)))
+        logger.info(f'Loaded {len(inputs)} inputs successfully.')
 
         # load outputs
         p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
@@ -359,7 +358,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
 
                     logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.info('Loaded {} outputs successfully.'.format(len(outputs)))
+            logger.info(f'Loaded {len(outputs)} outputs successfully.')
 
         os.chdir(pwd)
 
@@ -368,23 +367,26 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
 def generate_onnx_model_random_input(test_times, ref_input):
     inputs = []
 
-    for i in range(test_times):
-
+    for _ in range(test_times):
         input_data = []
         for tensor in ref_input:
             shape = tensor.shape
             dtype = tensor.dtype
-            if dtype == np.int8 or   \
-               dtype == np.uint8 or  \
-               dtype == np.int16 or  \
-               dtype == np.uint16 or \
-               dtype == np.int32 or  \
-               dtype == np.uint32 or \
-               dtype == np.int64 or  \
-               dtype == np.uint64:
-                new_tensor = np.random.randint(0, np.max(tensor)+1, shape, dtype)
-            else:
-                new_tensor = np.random.random_sample(shape).astype(dtype)
+            new_tensor = (
+                np.random.randint(0, np.max(tensor) + 1, shape, dtype)
+                if dtype
+                in [
+                    np.int8,
+                    np.uint8,
+                    np.int16,
+                    np.uint16,
+                    np.int32,
+                    np.uint32,
+                    np.int64,
+                    np.uint64,
+                ]
+                else np.random.random_sample(shape).astype(dtype)
+            )
 
             if debug:
                 logger.info("original tensor:")
@@ -399,7 +401,7 @@ def generate_onnx_model_random_input(test_times, ref_input):
     return inputs
 
 def percentage_in_allowed_threshold(e, percent_mismatch):
-    percent_string = re.search(r'\(([^)]+)', str(e)).group(1)
+    percent_string = re.search(r'\(([^)]+)', str(e))[1]
     if "%" in percent_string:
         percentage_wrong = float(percent_string.replace("%",""))
         return percentage_wrong < percent_mismatch
@@ -411,9 +413,9 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
         logger.info("No reference output provided.")
         return True, None
 
-    logger.info('Reference {} results.'.format(len(all_ref_outputs)))
-    logger.info('Predicted {} results.'.format(len(all_outputs)))
-    logger.info('rtol: {}, atol: {}'.format(rtol, atol))
+    logger.info(f'Reference {len(all_ref_outputs)} results.')
+    logger.info(f'Predicted {len(all_outputs)} results.')
+    logger.info(f'rtol: {rtol}, atol: {atol}')
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -443,7 +445,7 @@ def cleanup_files():
     p = subprocess.Popen(["find", ".", "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
+    files += stdout.split("\n")
 
     p = subprocess.Popen(["find", ".", "-name", "*.onnx"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
@@ -464,7 +466,7 @@ def cleanup_files():
 def remove_profiling_files(path):
     files = []
     out = get_output(["find", path, "-name", "onnxruntime_profile*"])
-    files = files + out.split("\n")
+    files += out.split("\n")
 
     for f in files:
         if "custom_test_data" in f:
@@ -473,12 +475,13 @@ def remove_profiling_files(path):
 
 
 def update_fail_report(fail_results, model, ep, e_type, e):
-    result = {}
+    result = {
+        "model": model,
+        "ep": ep,
+        "error type": e_type,
+        "error message": re.sub('^\n', '', str(e)),
+    }
 
-    result["model"] = model
-    result["ep"] = ep
-    result["error type"] = e_type
-    result["error message"] = re.sub('^\n', '', str(e))
 
     fail_results.append(result)
 
@@ -493,9 +496,9 @@ def update_metrics_map(model_to_metrics, model_name, ep_to_operator):
         if ep not in model_to_metrics[model_name]:
             model_to_metrics[model_name][ep] = {}
 
-        if ep == cuda or ep == cuda_fp16:
+        if ep in [cuda, cuda_fp16]:
             model_to_metrics[model_name][ep]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(op_map) 
-            model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map) 
+            model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map)
         else:
             total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(op_map)
             model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map) 
@@ -579,18 +582,14 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
     if model_name not in model_to_fail_ep:
         model_to_fail_ep[model_name] = {} 
 
-    new_map = {}
-    new_map["error_type"] = e_type
-    new_map["error_message"] = re.sub('^\n', '', str(e))
+    new_map = {"error_type": e_type, "error_message": re.sub('^\n', '', str(e))}
     model_to_fail_ep[model_name][ep] = new_map
 
     # If TRT fails, TRT FP16 should fail as well
     if ep == trt:
         ep_ = trt_fp16
         e_ = "skip benchmarking since TRT failed already."
-        new_map_1 = {}
-        new_map_1["error_type"] = e_type
-        new_map_1["error_message"] = e_
+        new_map_1 = {"error_type": e_type, "error_message": e_}
         model_to_fail_ep[model_name][ep_] = new_map_1 
 
 def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_type, e):
@@ -600,7 +599,7 @@ def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_
 
     if model_name not in model_to_fail_ep:
         model_to_fail_ep[model_name] = {} 
-    
+
     model_to_fail_ep[model_name][ep] = e_type
     update_fail_report(fail_results, model_name, ep, e_type, e)
 
@@ -638,7 +637,7 @@ def write_map_to_file(result, file_name):
     existed_result = {}
     if os.path.exists(file_name):
         existed_result = read_map_from_file(file_name)
-    
+
     for model, ep_list in result.items():
         if model in existed_result:
             existed_result[model] = {** existed_result[model], ** result[model]} 
@@ -650,14 +649,12 @@ def write_map_to_file(result, file_name):
 
 
 def get_cuda_version():
-    nvidia_strings = get_output(["nvidia-smi"]) 
-    version = re.search(r'CUDA Version: \d\d\.\d', nvidia_strings).group(0) 
-    return version
+    nvidia_strings = get_output(["nvidia-smi"])
+    return re.search(r'CUDA Version: \d\d\.\d', nvidia_strings)[0]
     
 def get_trt_version():
     nvidia_strings = get_output(["dpkg", "-l"])
-    version = re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings).group(0)
-    return version
+    return re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings)[0]
  
 def get_linux_distro(): 
     linux_strings = get_output(["cat", "/etc/os-release"])
@@ -691,12 +688,10 @@ def get_cpu_info():
 
 def get_gpu_info():
     info = get_output(["lspci", "-v"])
-    infos = re.findall('NVIDIA.*', info)
-    return infos
+    return re.findall('NVIDIA.*', info)
 
 def get_system_info():
-    info = {}
-    info["cuda"] = get_cuda_version()
+    info = {"cuda": get_cuda_version()}
     info["trt"] = get_trt_version()
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
@@ -715,11 +710,11 @@ def find_model_path(path):
     if model_path == ['']:
         return None
 
-    target_model_path = []
-    for m in model_path:
-        if "by_trt_perf" in m or m.startswith('.'):
-            continue
-        target_model_path.append(m)
+    target_model_path = [
+        m
+        for m in model_path
+        if "by_trt_perf" not in m and not m.startswith('.')
+    ]
 
     logger.info(target_model_path)
     if len(target_model_path) > 1:
@@ -735,10 +730,7 @@ def find_model_directory(path):
     model_dir = stdout.split("\n")
     # print(model_dir)
 
-    if model_dir == ['']:
-        return None
-
-    return model_dir
+    return None if model_dir == [''] else model_dir
 
 def find_test_data_directory(path):
     p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
@@ -748,34 +740,28 @@ def find_test_data_directory(path):
     test_data_dir = stdout.split("\n")
     logger.info(test_data_dir)
 
-    if test_data_dir == ['']:
-        return None
-
-    return test_data_dir
+    return None if test_data_dir == [''] else test_data_dir
 
 def parse_models_info_from_directory(path, models):
 
-    test_data_dir = find_test_data_directory(path) 
-
-    if test_data_dir:
+    if test_data_dir := find_test_data_directory(path):
         model_name = os.path.split(path)[-1]
         model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
         model_path = find_model_path(path)
 
-        model = {}
-        model["model_name"] = model_name
-        model["model_path"] = model_path 
-        model["working_directory"] = path 
-        model["test_data_path"] = path 
+        model = {
+            "model_name": model_name,
+            "model_path": model_path,
+            "working_directory": path,
+            "test_data_path": path,
+        }
 
         models[model_name] = model 
 
         logger.info(model)
         return
-    
-    model_dir = find_model_directory(path)
-    
-    if model_dir:
+
+    if model_dir := find_model_directory(path):
         for dir in model_dir:
             parse_models_info_from_directory(os.path.join(path, dir), models)
     

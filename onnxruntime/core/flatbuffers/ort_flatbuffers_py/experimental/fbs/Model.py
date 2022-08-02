@@ -47,9 +47,7 @@ class Model(object):
     # Model
     def OpsetImportLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Model
     def OpsetImportIsNone(self):
@@ -59,23 +57,17 @@ class Model(object):
     # Model
     def ProducerName(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Model
     def ProducerVersion(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Model
     def Domain(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Model
     def ModelVersion(self):
@@ -87,9 +79,7 @@ class Model(object):
     # Model
     def DocString(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
     # Model
     def Graph(self):
@@ -105,9 +95,7 @@ class Model(object):
     # Model
     def GraphDocString(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
-        if o != 0:
-            return self._tab.String(o + self._tab.Pos)
-        return None
+        return self._tab.String(o + self._tab.Pos) if o != 0 else None
 
 def ModelStart(builder): builder.StartObject(9)
 def ModelAddIrVersion(builder, irVersion): builder.PrependInt64Slot(0, irVersion, 0)

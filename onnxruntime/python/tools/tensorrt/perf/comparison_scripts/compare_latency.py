@@ -12,15 +12,13 @@ def parse_arguments():
     parser.add_argument("-o", "--output_csv", required=True, help="output different csv")
     parser.add_argument("--ep", required=False, default="trt", choices=["cpu", "cuda", "trt", "native"], help="ep to capture regressions on")
     parser.add_argument("--tolerance", required=False, default=0, help="allowed tolerance for latency comparison")
-    args = parser.parse_args()
-    return args 
+    return parser.parse_args() 
 
 def get_table_condition(table, fp, ep, tol): 
     ep = ep_map[ep]
     col1 = ep + " " + fp + " \nmean (ms)_x"
     col2 = ep + " " + fp + " \nmean (ms)_y"
-    condition = table[col1] > (table[col2] + tol)
-    return condition
+    return table[col1] > (table[col2] + tol)
 
 def main():
     args = parse_arguments()

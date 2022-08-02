@@ -21,6 +21,7 @@ Train a logistic regression
 The first step consists in retrieving the iris datset.
 """
 
+
 from sklearn.datasets import load_iris
 iris = load_iris()
 X, y = iris.data, iris.target
@@ -66,10 +67,14 @@ with open("logreg_iris.onnx", "wb") as f:
 import onnxruntime as rt
 sess = rt.InferenceSession("logreg_iris.onnx")
 
-print("input name='{}' and shape={}".format(
-    sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
-print("output name='{}' and shape={}".format(
-    sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+print(
+    f"input name='{sess.get_inputs()[0].name}' and shape={sess.get_inputs()[0].shape}"
+)
+
+print(
+    f"output name='{sess.get_outputs()[0].name}' and shape={sess.get_outputs()[0].shape}"
+)
+
 
 ##################################
 # We compute the predictions.
@@ -103,7 +108,7 @@ prob_name = sess.get_outputs()[1].name
 prob_rt = sess.run([prob_name], {input_name: X_test.astype(numpy.float32)})[0]
 
 import pprint
-pprint.pprint(prob_rt[0:3])
+pprint.pprint(prob_rt[:3])
 
 ###############################
 # Let's benchmark.
@@ -132,7 +137,7 @@ def loop(X_test, fct, n=None):
     nrow = X_test.shape[0]
     if n is None:
         n = nrow
-    for i in range(0, n):
+    for i in range(n):
         im = i % nrow
         fct(X_test[im: im+1])
 

@@ -64,7 +64,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         self.height = height
         self.start_index = start_index
         self.end_index = len(os.listdir(calibration_image_folder)) if end_index == 0 else end_index
-        self.stride = stride if stride >= 1 else 1  # stride must > 0
+        self.stride = max(stride, 1)
         self.batch_size = batch_size
         self.is_evaluation = is_evaluation
 
@@ -76,23 +76,17 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         return len(os.listdir(self.image_folder))
 
     def get_next(self):
-        iter_data = next(self.enum_data_dicts, None)
-        if iter_data:
+        if iter_data := next(self.enum_data_dicts, None):
             return iter_data
 
         self.enum_data_dicts = None
-        if self.start_index < self.end_index:
-            if self.batch_size == 1:
-                data = self.load_serial()
-            else:
-                data = self.load_batches()
-
-            self.start_index += self.stride
-            self.enum_data_dicts = iter(data)
-
-            return next(self.enum_data_dicts, None)
-        else:
+        if self.start_index >= self.end_index:
             return None
+        data = self.load_serial() if self.batch_size == 1 else self.load_batches()
+        self.start_index += self.stride
+        self.enum_data_dicts = iter(data)
+
+        return next(self.enum_data_dicts, None)
 
     def load_serial(self):
         width = self.width
@@ -101,7 +95,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
                                                                                 self.start_index, self.stride)
         input_name = self.input_name
 
-        print("Start from index %s ..." % (str(self.start_index)))
+        print(f"Start from index {str(self.start_index)} ...")
         data = []
         if self.is_evaluation:
             img_name_to_img_id = self.img_name_to_img_id
@@ -130,7 +124,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
 
         for index in range(0, stride, batch_size):
             start_index = self.start_index + index
-            print("Load batch from index %s ..." % (str(start_index)))
+            print(f"Load batch from index {str(start_index)} ...")
             nchw_data_list, filename_list, image_size_list = preprocess_func(self.image_folder, height, width,
                                                                                     start_index, batch_size)
 
@@ -139,7 +133,6 @@ class YoloV3DataReader(ObejctDetectionDataReader):
 
             nchw_data_batch = []
             image_id_batch = []
-            batches = []
             if self.is_evaluation:
                 img_name_to_img_id = self.img_name_to_img_id
                 for i in range(len(nchw_data_list)):
@@ -164,8 +157,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
                 print(batch_data.shape)
                 data = {input_name: batch_data, "image_shape": np.asarray([[416, 416]], dtype=np.float32)}
 
-            batches.append(data)
-
+            batches = [data]
         return batches
 
 
@@ -194,7 +186,7 @@ class YoloV3VariantDataReader(YoloV3DataReader):
         nchw_data_list, filename_list, image_size_list = self.preprocess_func(
             self.image_folder, height, width, self.start_index, self.stride)
 
-        print("Start from index %s ..." % (str(self.start_index)))
+        print(f"Start from index {str(self.start_index)} ...")
         data = []
         if self.is_evaluation:
             img_name_to_img_id = self.img_name_to_img_id
@@ -224,7 +216,7 @@ class YoloV3VariantDataReader(YoloV3DataReader):
         batches = []
         for index in range(0, stride, batch_size):
             start_index = self.start_index + index
-            print("Load batch from index %s ..." % (str(start_index)))
+            print(f"Load batch from index {str(start_index)} ...")
             nchw_data_list, filename_list, image_size_list = preprocess_func(
                 self.image_folder, height, width, start_index, batch_size)
 

@@ -29,22 +29,18 @@ def trim_unused_outputs(node, graph):
 def handle_init_state(init_state, nf, num_directions):
     if not init_state:
         return None
-    if not nf.get_initializer(init_state) is None:
+    if nf.get_initializer(init_state) is not None:
         return nf.get_initializer(init_state)
-    if num_directions == 2:
-        split_names = [init_state + '_split_0', init_state + '_split_1']
-        nf.make_node('Split', init_state, {'axis':0}, split_names) # [1, batch, hidden]
-        return [nf.make_node('Squeeze', s, {'axes':[0]}) for s in split_names]
-    else:
+    if num_directions != 2:
         return [nf.make_node('Squeeze', init_state, {'axes':[0]})]
+    split_names = [f'{init_state}_split_0', f'{init_state}_split_1']
+    nf.make_node('Split', init_state, {'axis':0}, split_names) # [1, batch, hidden]
+    return [nf.make_node('Squeeze', s, {'axes':[0]}) for s in split_names]
 
 # handle some common attributes between LSTM/GRU/RNN
 def handle_common_attributes(node, default_activations):
     direction = NodeFactory.get_attribute(node, 'direction')
-    if direction:
-        direction = str(direction, 'utf-8')
-    else:
-        direction = 'forward'
+    direction = str(direction, 'utf-8') if direction else 'forward'
     num_directions = 2 if direction == 'bidirectional' else 1
 
     activations = NodeFactory.get_attribute(node, 'activations')
@@ -84,7 +80,7 @@ def default_init_state(X, batch_size, batch_node, hidden_size, nf, postfix=''):
     else:
         assert type(batch_size) == int
         # add default init state to graph input
-        initializer_name = X + '_zero_init_state' + postfix
+        initializer_name = f'{X}_zero_init_state{postfix}'
         initializer_shape = (batch_size, hidden_size)
         nf.make_value_info(initializer_name, onnx.TensorProto.FLOAT, initializer_shape, NodeFactory.ValueInfoType.input)
         return nf.make_initializer(np.zeros(initializer_shape, dtype=np.float32), initializer_name)
@@ -93,7 +89,7 @@ def default_init_state(X, batch_size, batch_node, hidden_size, nf, postfix=''):
 # note rank-1 for seq_len is to differentiate it from rank-2 states
 def declare_seq_len_in_subgraph(seq_len, nf_body, prefix, batch_size):
     if seq_len:
-        seq_len_subgraph = prefix + '_seq_len_subgraph'
+        seq_len_subgraph = f'{prefix}_seq_len_subgraph'
         nf_body.make_value_info(seq_len_subgraph,
                                 data_type=onnx.TensorProto.INT32,
                                 shape=(batch_size,),
@@ -115,12 +111,17 @@ def handle_subgraph_outputs(nf_body, seq_len_subgraph, batch_size, hidden_size, 
 
         # since seq_len is rank-1, need to unsqueeze for Where op on rank-2 states
         condition = nf_body.make_node('Unsqueeze', nf_body.make_node('Greater', [seq_len_subgraph, np.zeros(shape=(), dtype=np.int32)]), {'axes':[1]})
-        for valid, default in subgraph_output_or_default:
-            final_subgraph_output.append(nf_body.make_node('Where', [condition, valid, default]))
+        final_subgraph_output.extend(
+            nf_body.make_node('Where', [condition, valid, default])
+            for valid, default in subgraph_output_or_default
+        )
+
     else:
         final_subgraph_output.append(None)
-        for valid, default in subgraph_output_or_default:
-            final_subgraph_output.append(nf_body.make_node('Identity', valid))
+        final_subgraph_output.extend(
+            nf_body.make_node('Identity', valid)
+            for valid, default in subgraph_output_or_default
+        )
 
     for subgraph_o in final_subgraph_output[1:]:
         nf_body.make_value_info(subgraph_o,
@@ -169,9 +170,12 @@ def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
     if len(gather_input_nodes) == 0:
         reason = "The loop's trip count (i) must be used to index input data. Node name: " + node.name
         if keep_unconvertible_loop_ops:
-            warnings.warn("Model contains a Loop op that cannot be converted to Scan. " + reason)
+            warnings.warn(
+                f"Model contains a Loop op that cannot be converted to Scan. {reason}"
+            )
+
             return None
-        raise RuntimeError("To convert a Loop op to a Scan. " +  reason)
+        raise RuntimeError(f"To convert a Loop op to a Scan. {reason}")
 
     scan_subgraph = copy.deepcopy(node.attribute[0].g)
 
@@ -220,29 +224,29 @@ def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
         count = 0
         for output_index2 in range(output_index + 1, len(scan_subgraph.output)):
             if scan_subgraph.output[output_index].name == scan_subgraph.output[output_index2].name:
-                new_output_name = scan_subgraph.output[output_index].name + '_extend_' + str(count)
+                new_output_name = f'{scan_subgraph.output[output_index].name}_extend_{str(count)}'
+
                 count = count + 1
                 identity_node = helper.make_node(
                     'Identity',
                     [scan_subgraph.output[output_index].name],
-                    [new_output_name], 
-                    scan_subgraph.output[output_index].name + '_identity')
-                new_identity_node = scan_subgraph.node.add()                
+                    [new_output_name],
+                    f'{scan_subgraph.output[output_index].name}_identity',
+                )
+
+                new_identity_node = scan_subgraph.node.add()
                 new_identity_node.CopyFrom(identity_node)
                 scan_subgraph.output[output_index2].name = new_output_name
 
     nf = NodeFactory(out_main_graph)
     new_input_names = [*initial_state_names, *scan_input_names]
-    scan_output_names = [o for o in node.output]
-    scan = nf.make_node(
+    scan_output_names = list(node.output)
+    return nf.make_node(
         'Scan',
         new_input_names,
-        {
-            'body': scan_subgraph,
-            'num_scan_inputs': len(scan_input_names)},
-            output_names=scan_output_names)
-
-    return scan 
+        {'body': scan_subgraph, 'num_scan_inputs': len(scan_input_names)},
+        output_names=scan_output_names,
+    ) 
 
 def convert_lstm_to_scan(node, out_main_graph):
     assert node.op_type == 'LSTM'

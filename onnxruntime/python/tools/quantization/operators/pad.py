@@ -22,10 +22,10 @@ class QPad(QuantOperatorBase):
         kwargs = {}
         for attribute in node.attribute:
             kv = attribute_to_kwarg(attribute)
-            kwargs.update(kv)
+            kwargs |= kv
 
-        if 'mode' not in kwargs or kwargs['mode'] == b'constant':
-            if len(node.input) > 2:  # There is 3rd input 'constant_value'
+        if 'mode' not in kwargs or kwargs['mode'] == b'constant':  # There is 3rd input 'constant_value'
+            if len(node.input) > 2:
                 zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
                 scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
                 if zp_tensor is None or scale_tensor is None:
@@ -41,7 +41,7 @@ class QPad(QuantOperatorBase):
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
                     quantized_padding_constant_array = quantize_nparray(self.quantizer.input_qType,
                                                                         padding_constant_array, scale_value, zp_value)
-                    quantized_padding_constant_name = node.input[2] + "_quantized"
+                    quantized_padding_constant_name = f"{node.input[2]}_quantized"
                     quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
                         quantized_padding_constant_array, quantized_padding_constant_name)
                     # Suppose this padding constant initializer only used by the node
@@ -58,9 +58,14 @@ class QPad(QuantOperatorBase):
                 node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
 
         # Create an entry for output quantized value
-        quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized",
-                                                quantized_input_value.scale_name, quantized_input_value.zp_name,
-                                                QuantizedValueType.Input)
+        quantized_output_value = QuantizedValue(
+            node.output[0],
+            f"{node.output[0]}_quantized",
+            quantized_input_value.scale_name,
+            quantized_input_value.zp_name,
+            QuantizedValueType.Input,
+        )
+
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
         node.input[0] = quantized_input_value.q_name

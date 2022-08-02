@@ -25,18 +25,17 @@ def parse_arguments():
     return parser.parse_args()
 
 def parse_csv(report_file):
-    table = pd.read_csv(report_file)
-    return table
+    return pd.read_csv(report_file)
 
 def insert_latency(commit_hash, report_url, latency): 
-    
+
     # connect to database
     cnx = mysql.connector.connect(
             user=user,
             password=password,
             host=host,
             database=database)
-    
+
     try:
         cursor = cnx.cursor()
 
@@ -51,13 +50,13 @@ def insert_latency(commit_hash, report_url, latency):
             to_drop = ['TrtGain-CudaFp32', 'EpGain-TrtFp32', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
             over_time = latency.drop(to_drop, axis='columns')
             over_time = over_time.melt(id_vars=['Model', 'Group'], var_name='Ep', value_name='Latency')
-            
+
             import time   
             datetime = time.strftime('%Y-%m-%d %H:%M:%S')
             over_time = over_time.assign(UploadTime=datetime)
             over_time = over_time.assign(CommitId=commit_hash)
             over_time = over_time.assign(ReportUrl=report_url)
-            
+
             over_time = over_time[['UploadTime', 'CommitId', 'Model', 'Ep', 'Latency', 'ReportUrl', 'Group']]
             over_time.fillna('', inplace=True)
             tuples = list(over_time.to_records(index=False))
@@ -67,10 +66,10 @@ def insert_latency(commit_hash, report_url, latency):
             insert_query = ('INSERT INTO onnxruntime.ep_latency_over_time '
                             '''(UploadTime, CommitId, Model, Ep, Latency, ReportUrl, ModelGroup) '''
                             '''VALUES %s; ''')
-            
+
             query = insert_query % tuples
             cursor.execute(query)
-        
+
         cnx.commit()
 
         cursor.close()
@@ -139,7 +138,7 @@ def write_table(engine, table, table_name):
     table.to_sql(table_name, con=engine, if_exists='replace', index=False, chunksize=1)
 
 def main():
-    
+
     # connect to database 
     cert = get_database_cert()
     ssl_args = {'ssl_ca': cert}
@@ -156,12 +155,12 @@ def main():
 
         folders = os.listdir(result_file)
         os.chdir(result_file)
-       
+
         fail = pd.DataFrame()
         memory = pd.DataFrame()
         latency = pd.DataFrame()
         status = pd.DataFrame()
-       
+
         for model_group in folders: 
             os.chdir(model_group)
             csv_filenames = os.listdir()
@@ -175,7 +174,7 @@ def main():
                 if "status" in csv: 
                     status = status.append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
-    
+
         print('writing failures over time to database')
         write_table(engine, fail, 'ep_model_fails')
         print('writing memory to database')
@@ -188,7 +187,7 @@ def main():
         insert_latency(args.commit_hash, args.report_url, latency)
 
     except BaseException as e: 
-        print(str(e))
+        print(e)
         sys.exit(1)
 
 if __name__ == "__main__":

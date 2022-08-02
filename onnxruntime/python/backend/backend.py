@@ -54,10 +54,10 @@ class OnnxRuntimeBackend(Backend):
         """
         if cls.allowReleasedOpsetsOnly:
             for opset in model.opset_import:
-                domain = opset.domain if opset.domain else 'ai.onnx'
+                domain = opset.domain or 'ai.onnx'
                 try:
                     key = (domain, opset.version)
-                    if not (key in helper.OP_SET_ID_VERSION_MAP):
+                    if key not in helper.OP_SET_ID_VERSION_MAP:
                         error_message = ("Skipping this test as only released onnx opsets are supported."
                                          "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
                                          " Got Domain '{0}' version '{1}'.".format(domain, opset.version))

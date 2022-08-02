@@ -99,8 +99,10 @@ ONNX_TYPE_TO_NP_TYPE = {
 }
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert qType in ONNX_TYPE_TO_NP_TYPE, \
-        "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    assert (
+        qType in ONNX_TYPE_TO_NP_TYPE
+    ), f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
@@ -118,7 +120,10 @@ def compute_scale_zp(rmin, rmax, qType, quantize_range):
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+        raise ValueError(
+            f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+        )
+
 
     return [zero_point, scale]
 
@@ -227,7 +232,7 @@ def attribute_to_kwarg(attribute):
         :return: attribute in {key: value} format.
     '''
     if (attribute.type == 0):
-        raise ValueError('attribute {} does not have type specified.'.format(attribute.name))
+        raise ValueError(f'attribute {attribute.name} does not have type specified.')
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
@@ -252,7 +257,10 @@ def attribute_to_kwarg(attribute):
     elif (attribute.type == 10):
         value = attribute.graphs
     else:
-        raise ValueError('attribute {} has unsupported type {}.'.format(attribute.name, attribute.type))
+        raise ValueError(
+            f'attribute {attribute.name} has unsupported type {attribute.type}.'
+        )
+
 
     return {attribute.name: value}
 
@@ -265,7 +273,7 @@ def find_by_name(item_name, item_list):
         return: item if found. None otherwise.
     '''
     items = [item for item in item_list if item.name == item_name]
-    return items[0] if len(items) > 0 else None
+    return items[0] if items else None
 
 
 def get_elem_index(elem_name, elem_list):
@@ -273,7 +281,7 @@ def get_elem_index(elem_name, elem_list):
     Helper function to return index of an item in a node list
     '''
     elem_idx = -1
-    for i in range(0, len(elem_list)):
+    for i in range(len(elem_list)):
         if elem_list[i] == elem_name:
             elem_idx = i
     return elem_idx
@@ -306,7 +314,7 @@ def write_calibration_table(calibration_cache):
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
 
-    logging.info("calibration cache: {}".format(calibration_cache))
+    logging.info(f"calibration cache: {calibration_cache}")
 
     with open("calibration.json", 'w') as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
@@ -343,20 +351,11 @@ def write_calibration_table(calibration_cache):
     with open("calibration.flatbuffers", 'wb') as file:
         file.write(buf)
 
-    # Deserialize data (for validation)
-    if False:
-        cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
-        dict_len = cal_table.DictLength()
-        for i in range(dict_len):
-            key_value = cal_table.Dict(i)
-            logging.info(key_value.Key())
-            logging.info(key_value.Value())
-
     # write plain text
     with open("calibration.cache", 'w') as file:
         for key in sorted(calibration_cache.keys()):
             value = calibration_cache[key]
-            s = key + ' ' + str(max(abs(value[0]), abs(value[1])))
+            s = f'{key} {str(max(abs(value[0]), abs(value[1])))}'
             file.write(s)
             file.write('\n')
 

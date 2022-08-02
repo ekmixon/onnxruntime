@@ -28,8 +28,7 @@ IntegerOpsRegistry = {
     "MatMul": MatMulInteger,
     "Attention": AttentionQuant,
     "LSTM": LSTMQuant,
-}
-IntegerOpsRegistry.update(CommonOpsRegistry)
+} | CommonOpsRegistry
 
 QLinearOpsRegistry = {
     "Conv": QLinearConv,
@@ -45,14 +44,13 @@ QLinearOpsRegistry = {
     "Split": QSplit,
     "Pad": QPad,
     "Reshape": Direct8BitOp,
-    "Transpose" : Direct8BitOp,
-    "Squeeze" : Direct8BitOp,
-    "Unsqueeze" : Direct8BitOp,
+    "Transpose": Direct8BitOp,
+    "Squeeze": Direct8BitOp,
+    "Unsqueeze": Direct8BitOp,
     "Resize": QResize,
-    "AveragePool" : QLinearPool,
+    "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
-}
-QLinearOpsRegistry.update(CommonOpsRegistry)
+} | CommonOpsRegistry
 
 QDQRegistry = {
     "Conv": QDQConv,

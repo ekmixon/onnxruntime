@@ -88,18 +88,21 @@ class CalibraterBase:
             tensors (set): set of tensor name.
             value_infos (dict): tensor name to value info.
         '''
-        value_infos = {vi.name: vi for vi in model.graph.value_info}
-        value_infos.update({ot.name: ot for ot in model.graph.output})
-        value_infos.update({it.name: it for it in model.graph.input})
-        initializer = set(init.name for init in model.graph.initializer)
+        value_infos = (
+            {vi.name: vi for vi in model.graph.value_info}
+            | {ot.name: ot for ot in model.graph.output}
+            | {it.name: it for it in model.graph.input}
+        )
+
+        initializer = {init.name for init in model.graph.initializer}
 
         tensors_to_calibrate = set()
-        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+        tensor_type_to_calibrate = {TensorProto.FLOAT, TensorProto.FLOAT16}
 
         for node in model.graph.node:
             if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
-                    if tensor_name in value_infos.keys():
+                    if tensor_name in value_infos:
                         vi = value_infos[tensor_name]
                         if vi.type.HasField('tensor_type') and (
                                 vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (
@@ -146,7 +149,9 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {
+            output.name for output in self.model.graph.output
+        }
 
     def augment_graph(self):
         '''
@@ -179,19 +184,33 @@ class MinMaxCalibrater(CalibraterBase):
                 # Please see the def of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L630
                 if d.WhichOneof('value') == 'dim_value' and d.dim_value == 0:
                     keepdims = 1
-                    shape = (1,) if len(dim) == 1 else list(1 for i in range(len(dim)))
+                    shape = (1,) if len(dim) == 1 else [1 for _ in range(len(dim))]
                     break
 
             # Adding ReduceMin nodes
-            reduce_min_name = tensor + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=keepdims)
+            reduce_min_name = f'{tensor}_ReduceMin'
+            reduce_min_node = onnx.helper.make_node(
+                'ReduceMin',
+                [tensor],
+                [f'{tensor}_ReduceMin'],
+                reduce_min_name,
+                keepdims=keepdims,
+            )
+
 
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
 
             # Adding ReduceMax nodes
-            reduce_max_name = tensor + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name, keepdims=keepdims)
+            reduce_max_name = f'{tensor}_ReduceMax'
+            reduce_max_node = onnx.helper.make_node(
+                'ReduceMax',
+                [tensor],
+                [f'{tensor}_ReduceMax'],
+                reduce_max_name,
+                keepdims=keepdims,
+            )
+
 
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
@@ -206,11 +225,11 @@ class MinMaxCalibrater(CalibraterBase):
 
     def collect_data(self, data_reader: CalibrationDataReader):
         while True:
-            inputs = data_reader.get_next()
-            if not inputs:
-                break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            if inputs := data_reader.get_next():
+                self.intermediate_outputs.append(self.infer_session.run(None, inputs))
 
+            else:
+                break
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
@@ -251,8 +270,12 @@ class MinMaxCalibrater(CalibraterBase):
             added_output_names[i].rpartition('_')[0] for i in range(0, len(added_output_names), 2)
         ]  #output names
 
-        merged_added_output_dict = dict(
-            (i, merged_output_dict[i]) for i in merged_output_dict if i not in self.model_original_outputs)
+        merged_added_output_dict = {
+            i: merged_output_dict[i]
+            for i in merged_output_dict
+            if i not in self.model_original_outputs
+        }
+
 
         pairs = []
         for i in range(0, len(added_output_names), 2):
@@ -265,7 +288,7 @@ class MinMaxCalibrater(CalibraterBase):
             if type(max_value_array) == int or max_value_array.size > 0:
                 max_value = float(max_value_array)
 
-            pairs.append(tuple([min_value, max_value]))
+            pairs.append((min_value, max_value))
 
         new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
         if self.calibrate_tensors_range:
@@ -286,7 +309,10 @@ class EntropyCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {
+            output.name for output in self.model.graph.output
+        }
+
         self.collector = None
 
     def augment_graph(self):
@@ -299,12 +325,9 @@ class EntropyCalibrater(CalibraterBase):
         model = onnx.shape_inference.infer_shapes(model)
 
         added_nodes = []
-        added_outputs = []
         tensors, value_infos = self.select_tensors_to_calibrate(model) 
 
-        for tensor in tensors:
-            added_outputs.append(value_infos[tensor])
-
+        added_outputs = [value_infos[tensor] for tensor in tensors]
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
         onnx.save(model, self.augmented_model_path)
@@ -318,12 +341,12 @@ class EntropyCalibrater(CalibraterBase):
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator. 
         '''
         while True:
-            inputs = data_reader.get_next()
-            if not inputs:
+            if inputs := data_reader.get_next():
+                self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+
+
+            else:
                 break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
-
-
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
@@ -337,7 +360,12 @@ class EntropyCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in self.model_original_outputs)
+        clean_merged_dict = {
+            i: merged_dict[i]
+            for i in merged_dict
+            if i not in self.model_original_outputs
+        }
+
 
         if not self.collector:
             self.collector = HistogramCollector()
@@ -453,11 +481,11 @@ class HistogramCollector(CalibrationDataCollector):
         num_bins = hist.size
         zero_bin_index = num_bins // 2
         num_half_quantized_bin = num_quantized_bins // 2
-        
-        kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
-        thresholds = [(0, 0) for i in range(kl_divergence.size)] 
 
-        for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
+        kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
+        thresholds = [(0, 0) for _ in range(kl_divergence.size)] 
+
+        for i in range(num_half_quantized_bin, zero_bin_index + 1):
             start_index = zero_bin_index - i 
             end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
 
@@ -474,7 +502,7 @@ class HistogramCollector(CalibrationDataCollector):
 
             # nonzeros[i] incidates whether p[i] is non-zero
             nonzeros = (p != 0).astype(np.int64)
-            
+
             # quantize p.size bins into quantized bins (default 128 bins) 
             quantized_bins = np.zeros(num_quantized_bins, dtype=np.int64)
             num_merged_bins = sliced_distribution.size // num_quantized_bins
@@ -496,7 +524,7 @@ class HistogramCollector(CalibrationDataCollector):
                 norm = sum(nonzeros[start:end])
                 if norm != 0:
                     q[start:end] = float(quantized_bins[index]) / float(norm)
-            
+
             p = smooth_distribution(p)
             q = smooth_distribution(q)
 
@@ -506,9 +534,7 @@ class HistogramCollector(CalibrationDataCollector):
                 kl_divergence[i - num_half_quantized_bin] = float('inf')
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
-        optimal_threshold = thresholds[min_kl_divergence_idx] 
-
-        return optimal_threshold
+        return thresholds[min_kl_divergence_idx]
 
 
 def create_calibrator(model,
@@ -520,4 +546,4 @@ def create_calibrator(model,
     elif calibrate_method == CalibrationMethod.Entropy:
         return EntropyCalibrater(model, op_types_to_calibrate, augmented_model_path)
 
-    raise ValueError('Unsupported calibration method {}'.format(calibrate_method))
+    raise ValueError(f'Unsupported calibration method {calibrate_method}')

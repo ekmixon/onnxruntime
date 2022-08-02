@@ -23,8 +23,10 @@ def check_distro_info():
         __my_distro_ver__ = platform.release().lower()
 
         if __my_distro_ver__ != '10':
-            warnings.warn('Unsupported Windows version (%s). ONNX Runtime supports Windows 10 and above, only.' %
-                          __my_distro_ver__)
+            warnings.warn(
+                f'Unsupported Windows version ({__my_distro_ver__}). ONNX Runtime supports Windows 10 and above, only.'
+            )
+
     elif __my_system__ == 'linux':
         ''' Although the 'platform' python module for getting Distro information works well on standard OS images
         running on real hardware, it is not accurate when running on Azure VMs, Git Bash, Cygwin, etc.
@@ -51,8 +53,11 @@ def check_distro_info():
         __my_distro_ver__ = platform.release().lower()
 
         if int(__my_distro_ver__.split('.')[0]) < 11:
-            warnings.warn('Unsupported macOS version (%s). ONNX Runtime supports macOS 11.0 or later.' %
-                          (__my_distro_ver__))
+            warnings.warn(
+                f'Unsupported macOS version ({__my_distro_ver__}). ONNX Runtime supports macOS 11.0 or later.'
+            )
+
     else:
-        warnings.warn('Unsupported platform (%s). ONNX Runtime supports Linux, macOS and Windows platforms, only.' %
-                      __my_system__)
+        warnings.warn(
+            f'Unsupported platform ({__my_system__}). ONNX Runtime supports Linux, macOS and Windows platforms, only.'
+        )

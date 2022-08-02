@@ -7,8 +7,7 @@ def parse_arguments():
     parser.add_argument("-p", "--prev", required=True, help="previous csv")
     parser.add_argument("-c", "--current", required=True, help="current csv")
     parser.add_argument("-o", "--output_csv", required=True, help="output different csv")
-    args = parser.parse_args()
-    return args 
+    return parser.parse_args() 
 
 def main():
     args = parse_arguments()

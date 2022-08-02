@@ -52,7 +52,7 @@ def preprocess_func(images_folder, height, width, size_limit=0):
     unconcatenated_batch_data = []
 
     for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
+        image_filepath = f'{images_folder}/{image_name}'
         pillow_img = Image.new("RGB", (width, height))
         pillow_img.paste(Image.open(image_filepath).resize((width, height)))
         input_data = np.float32(pillow_img) - \
@@ -60,8 +60,9 @@ def preprocess_func(images_folder, height, width, size_limit=0):
         nhwc_data = np.expand_dims(input_data, axis=0)
         nchw_data = nhwc_data.transpose(0, 3, 1, 2)  # ONNX Runtime standard
         unconcatenated_batch_data.append(nchw_data)
-    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
-    return batch_data
+    return np.concatenate(
+        np.expand_dims(unconcatenated_batch_data, axis=0), axis=0
+    )
 
 
 def benchmark(model_path):
@@ -73,7 +74,7 @@ def benchmark(model_path):
     input_data = np.zeros((1, 3, 224, 224), np.float32)
     # Warming up
     _ = session.run([], {input_name: input_data})
-    for i in range(runs):
+    for _ in range(runs):
         start = time.perf_counter()
         _ = session.run([], {input_name: input_data})
         end = (time.perf_counter() - start) * 1000
@@ -93,8 +94,7 @@ def get_args():
                         type=QuantFormat.from_string,
                         choices=list(QuantFormat))
     parser.add_argument("--per_channel", default=False, type=bool)
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main():

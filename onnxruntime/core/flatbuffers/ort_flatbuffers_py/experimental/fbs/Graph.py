@@ -40,9 +40,7 @@ class Graph(object):
     # Graph
     def InitializersLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def InitializersIsNone(self):
@@ -65,9 +63,7 @@ class Graph(object):
     # Graph
     def NodeArgsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def NodeArgsIsNone(self):
@@ -90,9 +86,7 @@ class Graph(object):
     # Graph
     def NodesLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def NodesIsNone(self):
@@ -122,9 +116,7 @@ class Graph(object):
     # Graph
     def NodeEdgesLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def NodeEdgesIsNone(self):
@@ -142,9 +134,7 @@ class Graph(object):
     # Graph
     def InputsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(14))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def InputsIsNone(self):
@@ -162,9 +152,7 @@ class Graph(object):
     # Graph
     def OutputsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def OutputsIsNone(self):
@@ -187,9 +175,7 @@ class Graph(object):
     # Graph
     def SparseInitializersLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
-        if o != 0:
-            return self._tab.VectorLen(o)
-        return 0
+        return self._tab.VectorLen(o) if o != 0 else 0
 
     # Graph
     def SparseInitializersIsNone(self):

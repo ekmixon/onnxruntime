@@ -10,13 +10,23 @@ import numpy as np
 import pandas as pd
 import onnxruntime as onnxrt
 
-ort_float_set = set([np.float32, np.float64])
+ort_float_set = {np.float32, np.float64}
 
-pd_float_set = set(['float64'])
+pd_float_set = {'float64'}
 
-ort_int_set = set([np.int8, np.uint8, np.int16, np.uint16, np.int32, np.uint32, np.int64, np.uint64])
+ort_int_set = {
+    np.int8,
+    np.uint8,
+    np.int16,
+    np.uint16,
+    np.int32,
+    np.uint32,
+    np.int64,
+    np.uint64,
+}
 
-pd_int_set = set(['int64'])
+
+pd_int_set = {'int64'}
 
 types_dict = {
     'tensor(float16)': np.float16,
@@ -61,7 +71,7 @@ class DataFrameTool():
         if len(expected_shape) == 1:
             return input_array
 
-        inferred_shape = [dim if dim else -1 for dim in expected_shape]
+        inferred_shape = [dim or -1 for dim in expected_shape]
         return input_array.reshape(inferred_shape)
 
     def _validate_type(self, input_meta, col_type):
@@ -90,8 +100,9 @@ class DataFrameTool():
         elif expected_type in ort_int_set and str(col_type) in pd_int_set:
            return
 
-        raise TypeError("Input {} requires type {} unable to cast column type {} ".format(
-            input_meta.name, expected_type, col_type))
+        raise TypeError(
+            f"Input {input_meta.name} requires type {expected_type} unable to cast column type {col_type} "
+        )
 
     def _process_input_list(self, df, input_metas, require):
         """
@@ -124,8 +135,9 @@ class DataFrameTool():
 
             elif require:
                 raise RuntimeError(
-                    "This model requires input {} of type {} but it is not found in the DataFrame".format(
-                        input_meta.name, types_dict[input_meta.type]))
+                    f"This model requires input {input_meta.name} of type {types_dict[input_meta.type]} but it is not found in the DataFrame"
+                )
+
         return feeds
 
     def _get_input_feeds(self, df, sess):
@@ -183,13 +195,13 @@ class DataFrameTool():
         for i, r in enumerate(results):
             # ML.NET specific columns that needs to be removed.
             if output_names[i].startswith('mlnet.') and \
-               output_names[i].endswith('.unusedOutput') and \
-               r.shape == (1,1):
+                   output_names[i].endswith('.unusedOutput') and \
+                   r.shape == (1,1):
                 continue
 
             r = pd.DataFrame(r)
             col_names = []
-            for suffix in range(0, len(r.columns)):
+            for suffix in range(len(r.columns)):
                 if output_types and output_names[i] in output_types:
                     dtype = output_types[output_names[i]]
                     if dtype == np.dtype('datetime64'):
@@ -199,13 +211,9 @@ class DataFrameTool():
                         r[suffix] = r[suffix].astype(dtype)
 
                 col_name = output_names[i] if len(r.columns) == 1 else \
-                           output_names[i] + '.' + str(suffix)
+                               output_names[i] + '.' + str(suffix)
                 col_names.append(col_name)
 
             r.columns = col_names
-            if df is None:
-                df = r
-            else:
-                df = df.join(r)
-
+            df = r if df is None else df.join(r)
         return df

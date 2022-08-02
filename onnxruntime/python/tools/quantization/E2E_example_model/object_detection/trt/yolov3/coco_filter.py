@@ -12,22 +12,22 @@ class CocoFilter():
         self.licenses = self.coco['licenses']
         
     def _process_categories(self):
-        self.categories = dict()
-        self.super_categories = dict()
+        self.categories = {}
+        self.super_categories = {}
         self.category_set = set()
-        self.category_to_image_ids = dict()
+        self.category_to_image_ids = {}
 
         for category in self.coco['categories']:
             cat_id = category['id']
             super_category = category['supercategory']
-            
+
             # Add category to categories dict
             if cat_id not in self.categories:
                 self.categories[cat_id] = category
                 self.category_set.add(category['name'])
             else:
                 print(f'ERROR: Skipping duplicate category id: {category}')
-            
+
             # Add category id to the super_categories dict
             if super_category not in self.super_categories:
                 self.super_categories[super_category] = {cat_id}
@@ -35,7 +35,7 @@ class CocoFilter():
                 self.super_categories[super_category] |= {cat_id} # e.g. {1, 2, 3} |= {4} => {1, 2, 3, 4}
 
     def _process_images(self):
-        self.images = dict()
+        self.images = {}
         for image in self.coco['images']:
             image_id = image['id']
             if image_id not in self.images:
@@ -44,7 +44,7 @@ class CocoFilter():
                 print(f'ERROR: Skipping duplicate image id: {image}')
                 
     def _process_segmentations(self):
-        self.segmentations = dict()
+        self.segmentations = {}
         for segmentation in self.coco['annotations']:
             image_id = segmentation['image_id']
             if image_id not in self.segmentations:
@@ -64,11 +64,11 @@ class CocoFilter():
         if len(missing_categories) > 0:
             print(f'Did not find categories: {missing_categories}')
             should_continue = input('Continue? (y/n) ').lower()
-            if should_continue != 'y' and should_continue != 'yes':
+            if should_continue not in ['y', 'yes']:
                 print('Quitting early.')
                 quit()
 
-        self.new_category_map = dict()
+        self.new_category_map = {}
         new_id = 1
         for key, item in self.categories.items():
             if item['name'] in self.filter_categories:

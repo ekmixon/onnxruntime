@@ -37,10 +37,7 @@ class PostprocessYOLO(object):
         resolution_raw -- the original spatial resolution from the input PIL image in WH order
         conf_th -- confidence threshold, e.g. 0.3
         """
-        outputs_reshaped = list()
-        for output in outputs:
-            outputs_reshaped.append(self._reshape_output(output))
-
+        outputs_reshaped = [self._reshape_output(output) for output in outputs]
         boxes_xywh, categories, confidences = self._process_yolo_output(
             outputs_reshaped, resolution_raw, conf_th)
 
@@ -90,7 +87,7 @@ class PostprocessYOLO(object):
         # E.g. in YOLOv3-608, there are three output tensors, which we associate with their
         # respective masks. Then we iterate through all output-mask pairs and generate candidates
         # for bounding boxes, their corresponding category predictions and their confidences:
-        boxes, categories, confidences = list(), list(), list()
+        boxes, categories, confidences = [], [], []
         for output, mask in zip(outputs_reshaped, self.masks):
             box, category, confidence = self._process_feats(output, mask)
             box, category, confidence = self._filter_boxes(box, category, confidence, conf_th)
@@ -109,7 +106,7 @@ class PostprocessYOLO(object):
 
         # Using the candidates from the previous (loop) step, we apply the non-max suppression
         # algorithm that clusters adjacent bounding boxes to a single bounding box:
-        nms_boxes, nms_categories, nscores = list(), list(), list()
+        nms_boxes, nms_categories, nscores = [], [], []
         for category in set(categories):
             idxs = np.where(categories == category)
             box = boxes[idxs]
@@ -218,7 +215,7 @@ class PostprocessYOLO(object):
         areas = width * height
         ordered = box_confidences.argsort()[::-1]
 
-        keep = list()
+        keep = []
         while ordered.size > 0:
             # Index of the current element:
             i = ordered[0]
@@ -255,11 +252,6 @@ class PostprocessYOLOWrapper(object):
         if 'tiny' in self.model:
             self.output_shapes = [(1, filters, h // 32, w // 32),
                                   (1, filters, h // 16, w // 16)]
-        else:
-            self.output_shapes = [(1, filters, h // 32, w // 32),
-                                  (1, filters, h // 16, w // 16),
-                                  (1, filters, h //  8, w //  8)]
-        if 'tiny' in self.model:
             postprocessor_args = {
                 # A list of 2 three-dimensional tuples for the Tiny YOLO masks
                 'yolo_masks': [(3, 4, 5), (0, 1, 2)],
@@ -273,6 +265,9 @@ class PostprocessYOLOWrapper(object):
                 'category_num': self.category_num
             }
         else:
+            self.output_shapes = [(1, filters, h // 32, w // 32),
+                                  (1, filters, h // 16, w // 16),
+                                  (1, filters, h //  8, w //  8)]
             postprocessor_args = {
                 # A list of 3 three-dimensional tuples for the YOLO masks
                 'yolo_masks': [(6, 7, 8), (3, 4, 5), (0, 1, 2)],

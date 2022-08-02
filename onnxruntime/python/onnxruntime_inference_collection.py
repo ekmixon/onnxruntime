@@ -17,7 +17,7 @@ def get_ort_device_type(device):
     elif device == 'cpu':
         return C.OrtDevice.cpu()
     else:
-        raise Exception('Unsupported device type: ' + device)
+        raise Exception(f'Unsupported device type: {device}')
 
 
 def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
@@ -70,10 +70,13 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
         if len(providers) != len(provider_options):
             raise ValueError("'providers' and 'provider_options' should be the same length if both are given.")
 
-        if not all([isinstance(provider, str) for provider in providers]):
+        if not all(isinstance(provider, str) for provider in providers):
             raise ValueError("Only string values for 'providers' are supported if 'provider_options' is given.")
 
-        if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
+        if not all(
+            isinstance(options_for_provider, dict)
+            for options_for_provider in provider_options
+        ):
             raise ValueError("'provider_options' values must be dicts.")
 
         for name, options in zip(providers, provider_options):
@@ -82,7 +85,7 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
     else:
         for provider in providers:
             if isinstance(provider, str):
-                set_provider_options(provider, dict())
+                set_provider_options(provider, {})
             elif isinstance(provider, tuple) and len(provider) == 2 and \
                     isinstance(provider[0], str) and isinstance(provider[1], dict):
                 set_provider_options(provider[0], provider[1])
@@ -181,15 +184,18 @@ class Session:
         num_inputs = len(input_feed)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+            raise ValueError(
+                f"Model requires {num_required_inputs} inputs. Input Feed contains {num_inputs}"
+            )
+
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
@@ -277,14 +283,14 @@ class InferenceSession(Session):
         self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
         # internal parameters that we don't expect to be used in general so aren't documented
-        disabled_optimizers = kwargs['disabled_optimizers'] if 'disabled_optimizers' in kwargs else None
+        disabled_optimizers = kwargs.get('disabled_optimizers')
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
         except ValueError:
             if self._enable_fallback:
-                print("EP Error using {}".format(providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                print(f"EP Error using {providers}")
+                print(f"Falling back to {self._fallback_providers} and retrying.")
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
@@ -305,7 +311,7 @@ class InferenceSession(Session):
                                                                         provider_options,
                                                                         available_providers)
 
-        session_options = self._sess_options if self._sess_options else C.get_default_session_options()
+        session_options = self._sess_options or C.get_default_session_options()
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
@@ -410,9 +416,9 @@ class IOBinding:
             self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                     device_id))
+        elif element_type is None or shape is None:
+            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
         else:
-            if element_type is None or shape is None:
-                raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                     device_id),
@@ -430,12 +436,7 @@ class IOBinding:
         Returns the output OrtValues from the Run() that preceded the call.
         The data buffer of the obtained OrtValues may not reside on CPU memory
         '''
-        returned_ortvalues = []
-
-        for ortvalue in self._iobinding.get_outputs():
-            returned_ortvalues.append(OrtValue(ortvalue))
-
-        return returned_ortvalues
+        return [OrtValue(ortvalue) for ortvalue in self._iobinding.get_outputs()]
 
     def copy_outputs_to_cpu(self):
         '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''

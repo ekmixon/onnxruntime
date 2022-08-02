@@ -4,8 +4,7 @@ import tarfile
 import json 
 
 def get_tar_file(link):
-    file_name = link.split("/")[-1]
-    return file_name
+    return link.split("/")[-1]
 
 def create_model_folder(model):
     os.mkdir(model)
@@ -32,25 +31,23 @@ def get_model_path(file_list):
             return file_name
 
 def get_test_path(model_path): 
-    model_filename = os.path.basename(model_path) 
-    test_path = model_path.split(model_filename)[0]
-    return test_path 
+    model_filename = os.path.basename(model_path)
+    return model_path.split(model_filename)[0] 
 
 def create_model_object(model, folder, model_file_path, test_path):
-    model_dict = {}
-    model_dict["model_name"] = model
-    model_dict["working_directory"] = "./models/" + folder
-    model_dict["model_path"] = "./" + model_file_path
-    model_dict["test_data_path"] = "./" + test_path
-    return model_dict
+    return {
+        "model_name": model,
+        "working_directory": f"./models/{folder}",
+        "model_path": f"./{model_file_path}",
+        "test_data_path": f"./{test_path}",
+    }
 
 def get_model_info(link):
     model_folder, file_list = download_model(link)
     model = model_folder[:-1]
     model_file_path = get_model_path(file_list)
     test_path = get_test_path(model_file_path)
-    model_info = create_model_object(model, model_folder, model_file_path, test_path)
-    return model_info
+    return create_model_object(model, model_folder, model_file_path, test_path)
 
 def write_json(models): 
     model_json = json.dumps(models, indent=4) 
@@ -61,10 +58,8 @@ def main():
     links = []
     with open('links.txt', 'r') as fh:
         links = [link.rstrip() for link in fh.readlines()]
-    
-    model_list = []
-    for link in links:
-        model_list.append(get_model_info(link))
+
+    model_list = [get_model_info(link) for link in links]
     write_json(model_list)
 
 if __name__ == "__main__":

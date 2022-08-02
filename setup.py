@@ -50,12 +50,15 @@ cuda_version = None
 rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
-    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
+    package_name = (
+        'ort-trt-nightly' if nightly_build else 'onnxruntime-gpu-tensorrt'
+    )
+
 elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
-    package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
+    package_name = 'ort-gpu-nightly' if nightly_build else 'onnxruntime-gpu'
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
-    package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
+    package_name = 'ort-rocm-nightly' if nightly_build else 'onnxruntime-rocm'
     rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
@@ -125,7 +128,9 @@ try:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                        f.write(
+                            f"""_{library.split('.')[0]} = CDLL("{library}", mode=RTLD_GLOBAL)\n"""
+                        )
 
         def run(self):
             if is_manylinux:
@@ -134,8 +139,21 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
-                cuda_dependencies.extend(['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so'])
+                cuda_dependencies = [
+                    'libcublas.so',
+                    'libcudnn.so',
+                    'libcudart.so',
+                    'libcurand.so',
+                    'libcufft.so',
+                    'libnvToolsExt.so',
+                    'librccl.so',
+                    'libamdhip64.so',
+                    'librocblas.so',
+                    'libMIOpen.so',
+                    'libhsa-runtime64.so',
+                    'libhsakmt.so',
+                ]
+
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -144,7 +162,7 @@ try:
                             to_preload.append(line)
                             args.extend(['--remove-needed', line])
                 args.append(dest)
-                if len(to_preload) > 0:
+                if to_preload:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)

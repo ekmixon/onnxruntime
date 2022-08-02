@@ -21,9 +21,9 @@ class AttentionQuant(QuantOperatorBase):
         assert (node.op_type == "Attention")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+                self.quantizer.quantize_inputs(node, [0, 1])
 
-        qattention_name = "" if node.name == "" else node.name + "_quant"
+        qattention_name = "" if node.name == "" else f"{node.name}_quant"
 
         inputs = []
         inputs.extend(quantized_input_names)
@@ -35,7 +35,7 @@ class AttentionQuant(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(attribute_to_kwarg(attribute))
+            kwargs |= attribute_to_kwarg(attribute)
         kwargs["domain"] = ms_domain
         qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, **kwargs)
         nodes.append(qattention_node)

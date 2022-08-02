@@ -25,26 +25,27 @@ with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker
         if package_filename is None:
             m = re.match("(.+?)_ROOT=(.*)$", line)
             if m is not None:
-                package_name = m.group(1)
-                package_filename = m.group(2)
+                package_name = m[1]
+                package_filename = m[2]
             else:
                 m = re.match("(.+?)_VERSION=(.*)$", line)
                 if m is not None:
-                    package_name = m.group(1)
-                    package_filename = m.group(2)
+                    package_name = m[1]
+                    package_filename = m[2]
         elif package_url is None:
             m = re.match("(.+?)_DOWNLOAD_URL=(.+)$", line)
             if m is not None:
-                package_url = m.group(2)
-                if package_name == 'LIBXCRYPT':
-                    package_url = m.group(2) + "/v" + \
-                        package_filename + ".tar.gz"
-                elif package_name == 'CMAKE':
-                    package_url = m.group(
-                        2) + "/v" + package_filename + "/cmake-" + package_filename + ".tar.gz"
+                package_url = m[2]
+                if package_name == 'CMAKE':
+                    package_url = (
+                        (((m[2] + "/v") + package_filename) + "/cmake-")
+                        + package_filename
+                    ) + ".tar.gz"
+
+                elif package_name == 'LIBXCRYPT':
+                    package_url = ((m[2] + "/v" + package_filename) + ".tar.gz")
                 else:
-                    package_url = m.group(2) + "/" + \
-                        package_filename + ".tar.gz"
+                    package_url = ((m[2] + "/" + package_filename) + ".tar.gz")
                 registration = {
                     "Component": {
                         "Type": "other",
@@ -65,14 +66,21 @@ def normalize_path_separators(path):
     return path.replace(os.path.sep, "/")
 
 proc = subprocess.run(
-    ["git", "submodule", "foreach", "--quiet", "--recursive", "{} {} $toplevel/$sm_path".format(
-        normalize_path_separators(sys.executable),
-        normalize_path_separators(os.path.join(SCRIPT_DIR, "print_submodule_info.py")))],
+    [
+        "git",
+        "submodule",
+        "foreach",
+        "--quiet",
+        "--recursive",
+        f'{normalize_path_separators(sys.executable)} {normalize_path_separators(os.path.join(SCRIPT_DIR, "print_submodule_info.py"))} $toplevel/$sm_path',
+    ],
     check=True,
     cwd=REPO_DIR,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
-    universal_newlines=True)
+    universal_newlines=True,
+)
+
 
 
 submodule_lines = proc.stdout.splitlines()
@@ -85,10 +93,10 @@ for submodule_line in submodule_lines:
                 "commitHash": commit,
                 "repositoryUrl": url,
             },
-            "comments": "git submodule at {}".format(
-                normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR)))
+            "comments": f"git submodule at {normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))}",
         }
     }
+
     registrations.append(registration)
 
 cgmanifest = {"Version": 1, "Registrations": registrations}

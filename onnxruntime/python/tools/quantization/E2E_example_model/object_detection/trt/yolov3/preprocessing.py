@@ -35,9 +35,7 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
         return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
     elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
-        if end_index > len(image_names):
-            end_index = len(image_names)
-
+        end_index = min(end_index, len(image_names))
         batch_filenames = [image_names[i] for i in range(start_index, end_index)]
     else:
         batch_filenames = image_names
@@ -47,11 +45,11 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     image_size_list = []
 
     print(batch_filenames)
-    print("size: %s" % str(len(batch_filenames)))
+    print(f"size: {len(batch_filenames)}")
 
     for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
-        img = Image.open(image_filepath) 
+        image_filepath = f'{images_folder}/{image_name}'
+        img = Image.open(image_filepath)
         model_image_size = (height, width)
         boxed_image = letterbox_image(img, tuple(reversed(model_image_size)))
         image_data = np.array(boxed_image, dtype='float32')
@@ -95,9 +93,7 @@ def yolov3_preprocess_func_2(images_folder, height, width, start_index=0, size_l
         return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
     elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
-        if end_index > len(image_names):
-            end_index = len(image_names)
-
+        end_index = min(end_index, len(image_names))
         batch_filenames = [image_names[i] for i in range(start_index, end_index)]
     else:
         batch_filenames = image_names
@@ -106,14 +102,14 @@ def yolov3_preprocess_func_2(images_folder, height, width, start_index=0, size_l
     image_size_list = []
 
     print(batch_filenames)
-    print("size: %s" % str(len(batch_filenames)))
+    print(f"size: {len(batch_filenames)}")
 
     for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
+        image_filepath = f'{images_folder}/{image_name}'
         model_image_size = (height, width)
 
         img = cv2.imread(image_filepath)
-        image_data = _preprocess_yolo(img, tuple(model_image_size)) 
+        image_data = _preprocess_yolo(img, tuple(model_image_size))
         image_data = np.ascontiguousarray(image_data)
         image_data = np.expand_dims(image_data, 0)
         unconcatenated_batch_data.append(image_data)
@@ -155,9 +151,7 @@ def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, 
         return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
     elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
-        if end_index > len(image_names):
-            end_index = len(image_names)
-
+        end_index = min(end_index, len(image_names))
         batch_filenames = [image_names[i] for i in range(start_index, end_index)]
     else:
         batch_filenames = image_names
@@ -166,10 +160,10 @@ def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, 
     image_size_list = []
 
     print(batch_filenames)
-    print("size: %s" % str(len(batch_filenames)))
+    print(f"size: {len(batch_filenames)}")
 
     for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
+        image_filepath = f'{images_folder}/{image_name}'
         model_image_size = (height, width)
 
         img = cv2.imread(image_filepath)
@@ -178,7 +172,7 @@ def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, 
         image_data = np.expand_dims(image_data, 0)
         unconcatenated_batch_data.append(image_data)
         _height, _width, _ = img.shape
-        image_size_list.append(img.shape[0:2])  # img.shape is h, w, c
+        image_size_list.append(img.shape[:2])
 
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
@@ -223,9 +217,7 @@ def yolov3_variant_preprocess_func_2(images_folder, height, width, start_index=0
         return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
     elif size_limit > 0 and len(image_names) >= size_limit:
         end_index = start_index + size_limit
-        if end_index > len(image_names):
-            end_index = len(image_names)
-
+        end_index = min(end_index, len(image_names))
         batch_filenames = [image_names[i] for i in range(start_index, end_index)]
     else:
         batch_filenames = image_names
@@ -234,10 +226,10 @@ def yolov3_variant_preprocess_func_2(images_folder, height, width, start_index=0
     image_size_list = []
 
     print(batch_filenames)
-    print("size: %s" % str(len(batch_filenames)))
+    print(f"size: {len(batch_filenames)}")
 
     for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
+        image_filepath = f'{images_folder}/{image_name}'
         img0 = cv2.imread(image_filepath)
         img = letterbox(img0, new_shape=(height, width), auto=False)[0]
         img = img[:, :, ::-1].transpose(2, 0, 1)
@@ -247,7 +239,7 @@ def yolov3_variant_preprocess_func_2(images_folder, height, width, start_index=0
         img = img.astype('float32') / 255.0
 
         unconcatenated_batch_data.append(img)
-        image_size_list.append(img0.shape[0:2])  # img.shape is h, w, c
+        image_size_list.append(img0.shape[:2])
 
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list

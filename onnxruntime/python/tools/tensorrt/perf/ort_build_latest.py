@@ -13,8 +13,7 @@ def parse_arguments():
     parser.add_argument("-v", "--commit_hash", required = False, help="Github commit to test perf off of")
     parser.add_argument("-s", "--save", required=False, help="Directory to archive wheel file")
     parser.add_argument("-a", "--use_archived", required=False, help="Archived wheel file")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 def archive_wheel_file(save_path, ort_wheel_file):
     if not os.path.exists(save_path):
@@ -35,17 +34,21 @@ def install_new_ort_wheel(ort_master_path):
 def main():
     args = parse_arguments()
 
-    cmake_tar = "cmake-3.17.4-Linux-x86_64.tar.gz" 
+    cmake_tar = "cmake-3.17.4-Linux-x86_64.tar.gz"
     if not os.path.exists(cmake_tar):
-        p = subprocess.run(["wget", "-c", "https://cmake.org/files/v3.17/" + cmake_tar], check=True)
+        p = subprocess.run(
+            ["wget", "-c", f"https://cmake.org/files/v3.17/{cmake_tar}"],
+            check=True,
+        )
+
     tar = tarfile.open(cmake_tar)
     tar.extractall()
     tar.close()
-    
+
     os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.17.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
     os.environ["CUDACXX"] = os.path.join(args.cuda_home, "bin", "nvcc") 
 
-    ort_master_path = args.ort_master_path 
+    ort_master_path = args.ort_master_path
     pwd = os.getcwd()
     os.chdir(ort_master_path)
 
@@ -53,7 +56,7 @@ def main():
         ort_wheel_file = args.use_archived
         p1 = subprocess.Popen(["pip3", "install", "-I", ort_wheel_file])
         p1.wait()
-    
+
     else:
         if args.commit_hash:
             commit = args.commit_hash    
@@ -67,7 +70,7 @@ def main():
         p1.wait()
 
         ort_wheel_file = install_new_ort_wheel(ort_master_path)
-    
+
         if args.save:
             save_path = os.path.join(args.save, commit)
             archive_wheel_file(save_path, ort_wheel_file)

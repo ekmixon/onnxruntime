@@ -144,9 +144,7 @@ def parse_arguments(argv=None):
                                        help='Nuclear/top-p sampling accumulation probability.')
     sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
 
-    args = parser.parse_args(argv)
-
-    return args
+    return parser.parse_args(argv)
 
 
 def main(args):

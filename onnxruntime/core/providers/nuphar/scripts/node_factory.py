@@ -14,7 +14,7 @@ class NodeFactory:
     const_count_ = 0
 
     def __init__(self, main_graph, sub_graph=None, prefix=''):
-        self.graph_ = sub_graph if sub_graph else main_graph
+        self.graph_ = sub_graph or main_graph
         self.main_graph_ = main_graph
         self.name_prefix_ = prefix
 
@@ -37,14 +37,21 @@ class NodeFactory:
         return self.name_prefix_
 
     def get_initializer(self, name):
-        found = [i for i in list(self.main_graph_.initializer) + list(self.graph_.initializer) if i.name == name]
-        if found:
+        if found := [
+            i
+            for i in list(self.main_graph_.initializer)
+            + list(self.graph_.initializer)
+            if i.name == name
+        ]:
             return numpy_helper.to_array(found[0])
         return None
 
     def get_value_info(self, name):
-        found = [vi for vi in list(self.graph_.value_info) + list(self.graph_.input) if vi.name == name]
-        if found:
+        if found := [
+            vi
+            for vi in list(self.graph_.value_info) + list(self.graph_.input)
+            if vi.name == name
+        ]:
             return found[0]
         return None
 
@@ -56,16 +63,14 @@ class NodeFactory:
                 continue
             assert not removed
             graph.initializer.remove(initializer[0])
-            initializer_in_input = [i for i in graph.input if i.name == name]
-            if initializer_in_input:
+            if initializer_in_input := [i for i in graph.input if i.name == name]:
                 graph.input.remove(initializer_in_input[0])
             removed = True
         assert removed or allow_empty
 
     @staticmethod
     def get_attribute(node, attr_name, default_value=None):
-        found = [attr for attr in node.attribute if attr.name == attr_name]
-        if found:
+        if found := [attr for attr in node.attribute if attr.name == attr_name]:
             return helper.get_attribute_value(found[0])
         return default_value
 
@@ -97,7 +102,7 @@ class NodeFactory:
         if len(new_name) == 0:
             already_existed = True
             while already_existed:
-                new_name = self.name_prefix_ + '_Const_' + str(NodeFactory.const_count_)
+                new_name = f'{self.name_prefix_}_Const_{str(NodeFactory.const_count_)}'
                 NodeFactory.const_count_ = NodeFactory.const_count_ + 1
                 already_existed = new_name in [i.name for i in list(self.main_graph_.initializer) + list(self.graph_.initializer)]
         new_initializer.CopyFrom(numpy_helper.from_array(ndarray, new_name))

@@ -40,9 +40,8 @@ class QuantizeConfig:
     def q_type(self):
         if self.type_bits_ == 8:
             return np.int8 if self.sign_bit_ else np.uint8
-        else:
-            assert self.type_bits_ == 16
-            return np.int16 if self.sign_bit_ else np.uint16
+        assert self.type_bits_ == 16
+        return np.int16 if self.sign_bit_ else np.uint16
 
     def q_type_bits(self):
         return self.type_bits_

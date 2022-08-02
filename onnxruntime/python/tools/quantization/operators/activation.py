@@ -11,7 +11,7 @@ class QLinearActivation(QuantOperatorBase):
 
     def QuantizeClipRelu(self):
         node = self.node
-        assert (node.op_type == "Relu" or node.op_type == 'Clip')
+        assert node.op_type in ["Relu", 'Clip']
 
         # When mode is QLinearOps, the output quantization params are calculated based on outputs from
         # activation nodes, therefore these nodes can be removed from the graph if they follow a quantized op.
@@ -25,7 +25,7 @@ class QLinearActivation(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-        if node.op_type == "Relu" or node.op_type == 'Clip':
+        if node.op_type in ["Relu", 'Clip']:
             self.QuantizeClipRelu()
             return
 
@@ -39,28 +39,32 @@ class QLinearActivation(QuantOperatorBase):
         # No assert on op_type as it is controlled by registry
         # only try to quantize when given quantization parameters for it
         data_found, output_scale_name, output_zp_name, _, _ = \
-            self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
+                self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
         if not data_found:
             super().quantize()
             return
 
         quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
 
-        qlinear_activation_output = node.output[0] + "_quantized"
-        qlinear_activation_name = ""
-        if node.name != "":
-            qlinear_activation_name = node.name + "_quant"
+        qlinear_activation_output = f"{node.output[0]}_quantized"
+        qlinear_activation_name = f"{node.name}_quant" if node.name != "" else ""
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(attribute_to_kwarg(attribute))
+            kwargs |= attribute_to_kwarg(attribute)
         kwargs["domain"] = ms_domain
 
         qlinear_activation_inputs = [
             quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name
         ]
 
-        qlinear_activation_node = onnx.helper.make_node("QLinear" + node.op_type, qlinear_activation_inputs,
-                                                        [qlinear_activation_output], qlinear_activation_name, **kwargs)
+        qlinear_activation_node = onnx.helper.make_node(
+            f"QLinear{node.op_type}",
+            qlinear_activation_inputs,
+            [qlinear_activation_output],
+            qlinear_activation_name,
+            **kwargs,
+        )
+
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name, output_zp_name,

@@ -28,15 +28,10 @@ def generate_feeds(sess, symbolic_dims={}):
         # replace any symbolic dimensions
         shape = []
         for dim in input_meta.shape:
-            if not dim:
-                # unknown dim
+            if dim and type(dim) == str and dim in symbolic_dims:
+                shape.append(int(symbolic_dims[dim]))
+            elif dim and type(dim) == str or not dim:
                 shape.append(1)
-            elif type(dim) == str:
-                # symbolic dim. see if we have a value otherwise use 1
-                if dim in symbolic_dims:
-                    shape.append(int(symbolic_dims[dim]))
-                else:
-                    shape.append(1)
             else:
                 shape.append(dim)
 
@@ -48,7 +43,7 @@ def generate_feeds(sess, symbolic_dims={}):
         elif input_meta.type == 'tensor(bool)':
             feeds[input_meta.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
         else:
-            print("unsupported input type {} for input {}".format(input_meta.type, input_meta.name))
+            print(f"unsupported input type {input_meta.type} for input {input_meta.name}")
             sys.exit(-1)
     return feeds
 
@@ -61,7 +56,7 @@ def run_model(model_path,
               feeds=None,
               override_initializers=True):
     if debug:
-        print("Pausing execution ready for debugger to attach to pid: {}".format(os.getpid()))
+        print(f"Pausing execution ready for debugger to attach to pid: {os.getpid()}")
         print("Press key to continue.")
         sys.stdin.read(1)
 
@@ -82,7 +77,7 @@ def run_model(model_path,
         # and can be overridden (available in IR4). For IR < 4 models
         # the list would be empty
         for initializer in sess.get_overridable_initializers():
-            shape = [dim if dim else 1 for dim in initializer.shape]
+            shape = [dim or 1 for dim in initializer.shape]
             if initializer.type in float_dict:
                 feeds[initializer.name] = np.random.rand(*shape).astype(float_dict[initializer.type])
             elif initializer.type in integer_dict:
@@ -91,22 +86,25 @@ def run_model(model_path,
             elif initializer.type == 'tensor(bool)':
                 feeds[initializer.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
             else:
-                print("unsupported initializer type {} for initializer {}".format(initializer.type, initializer.name))
+                print(
+                    f"unsupported initializer type {initializer.type} for initializer {initializer.name}"
+                )
+
                 sys.exit(-1)
 
     start = timer()
-    for i in range(num_iters):
+    for _ in range(num_iters):
         outputs = sess.run([], feeds)  # fetch all outputs
     end = timer()
 
-    print("model: {}".format(meta.graph_name))
-    print("version: {}".format(meta.version))
-    print("iterations: {}".format(num_iters))
-    print("avg latency: {} ms".format(((end - start) * 1000) / num_iters))
+    print(f"model: {meta.graph_name}")
+    print(f"version: {meta.version}")
+    print(f"iterations: {num_iters}")
+    print(f"avg latency: {(end - start) * 1000 / num_iters} ms")
 
     if profile:
         trace_file = sess.end_profiling()
-        print("trace file written to: {}".format(trace_file))
+        print(f"trace file written to: {trace_file}")
 
     return 0, feeds, num_iters > 0 and outputs
 
