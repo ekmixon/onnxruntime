@@ -52,7 +52,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
-    "@release-it/conventional-changelog": "^2.0.0",
+    "@release-it/conventional-changelog": "^6.0.0",
     "@types/fs-extra": "^9.0.11",
     "@types/jest": "^26.0.0",
     "@types/react": "^16.9.19",
