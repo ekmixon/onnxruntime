@@ -59,7 +59,7 @@
     "minimist": "^1.2.5",
     "mocha": "^8.3.2",
     "node-polyfill-webpack-plugin": "^1.1.0",
-    "npmlog": "^4.1.2",
+    "npmlog": "^7.0.1",
     "numpy-parser": "^1.2.3",
     "strip-json-comments": "^3.1.1",
     "ts-loader": "^9.1.2",
